@@ -1,0 +1,28 @@
+
+> truflux-website-first-build@1.0.13 dev
+> vite --host 127.0.0.1 --port 5173
+
+
+  VITE v6.0.7  ready in 86 ms
+
+  ➜  Local:   http://127.0.0.1:5173/
+12:44:29 am [vite] (client) page reload index.html
+12:44:29 am [vite] (ssr) page reload index.html
+12:44:29 am [vite] vite.config.js changed, restarting server...
+12:44:29 am [vite] (client) hmr update /src/styles.css
+12:44:29 am [vite] (client) hmr update /src/main.jsx
+12:44:29 am [vite] (client) hmr update /src/main.jsx
+12:44:29 am [vite] server restarted.
+12:46:49 am [vite] (client) page reload index.html
+12:46:49 am [vite] (ssr) page reload index.html
+12:46:49 am [vite] vite.config.js changed, restarting server...
+12:46:49 am [vite] (client) hmr update /src/styles.css
+12:46:49 am [vite] (client) hmr update /src/main.jsx
+12:46:49 am [vite] (client) hmr update /src/main.jsx
+12:46:49 am [vite] (client) page reload index.html
+12:46:49 am [vite] (ssr) page reload index.html
+failed to load config from /Users/satyassrinivasan/Desktop/TFT-Web/frontend/vite.config.js
+12:46:50 am [vite] Cannot find package 'vite' imported from /Users/satyassrinivasan/node_modules/.vite-temp/vite.config.js.timestamp-1782069410025-2a2b640ad4d598.mjs
+12:46:50 am [vite] server restart failed
+12:46:50 am [vite] (client) hmr invalidate /src/main.jsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+12:46:50 am [vite] (client) page reload src/main.jsx
