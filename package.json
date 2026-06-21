@@ -1,15 +1,14 @@
 {
   "name": "truflux-website",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "private": true,
   "description": "Truflux Technologies website first build with gated whitepapers, admin panel and lead agent.",
   "scripts": {
-    "postinstall": "python -m pip install --upgrade pip && python -m pip install -r backend/requirements.txt && cd frontend && npm install",
-    "build": "cd frontend && npm run build",
+    "build": "cd frontend && npm install --include=dev --no-audit --no-fund && npm run build",
     "start": "cd backend && python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}",
     "dev:frontend": "cd frontend && npm run dev",
-    "build:frontend": "cd frontend && npm run build",
-    "install:frontend": "cd frontend && npm install"
+    "build:frontend": "cd frontend && npm install --include=dev --no-audit --no-fund && npm run build",
+    "install:frontend": "cd frontend && npm install --include=dev --no-audit --no-fund"
   },
   "engines": {
     "node": ">=18.18.0",

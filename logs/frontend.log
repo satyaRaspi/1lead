@@ -58,3 +58,45 @@ failed to load config from /Users/satyassrinivasan/Desktop/TFT-Web/frontend/vite
 4:55:54 am [vite] (client) hmr update /src/main.jsx
 4:55:54 am [vite] (client) hmr invalidate /src/main.jsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
 4:55:54 am [vite] (client) page reload src/main.jsx
+4:57:03 am [vite] vite.config.js changed, restarting server...
+4:57:03 am [vite] (client) hmr update /src/main.jsx
+4:57:03 am [vite] (client) hmr update /src/main.jsx
+4:57:03 am [vite] (client) hmr update /src/styles.css
+failed to load config from /Users/satyassrinivasan/Desktop/TFT-Web/frontend/vite.config.js
+4:57:03 am [vite] Cannot find package 'vite' imported from /Users/satyassrinivasan/node_modules/.vite-temp/vite.config.js.timestamp-1782084423212-81884cd3bb4f3.mjs
+4:57:03 am [vite] server restart failed
+4:57:03 am [vite] (client) hmr invalidate /src/main.jsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+4:57:03 am [vite] (client) page reload src/main.jsx
+4:57:03 am [vite] (client) page reload index.html
+4:57:03 am [vite] (ssr) page reload index.html
+4:57:14 am [vite] (client) page reload index 2.html
+4:57:14 am [vite] (ssr) page reload index 2.html
+5:13:05 am [vite] (client) page reload index.html
+5:13:05 am [vite] (ssr) page reload index.html
+5:13:05 am [vite] vite.config.js changed, restarting server...
+5:13:05 am [vite] (client) page reload index 2.html
+5:13:05 am [vite] (ssr) page reload index 2.html
+5:13:05 am [vite] (client) hmr update /src/styles.css
+5:13:05 am [vite] (client) hmr update /src/main.jsx
+5:13:05 am [vite] (client) hmr update /src/main.jsx
+failed to load config from /Users/satyassrinivasan/Desktop/TFT-Web/frontend/vite.config.js
+5:13:05 am [vite] Cannot find package 'vite' imported from /Users/satyassrinivasan/node_modules/.vite-temp/vite.config.js.timestamp-1782085385139-ec97a5cb52944.mjs
+5:13:05 am [vite] server restart failed
+5:13:05 am [vite] (client) page reload index.html
+5:13:05 am [vite] (ssr) page reload index.html
+5:13:05 am [vite] vite.config.js changed, restarting server...
+5:13:05 am [vite] (client) hmr update /src/styles.css
+5:13:05 am [vite] (client) hmr update /src/main.jsx
+5:13:05 am [vite] (client) hmr update /src/main.jsx
+failed to load config from /Users/satyassrinivasan/Desktop/TFT-Web/frontend/vite.config.js
+5:13:05 am [vite] Cannot find package 'vite' imported from /Users/satyassrinivasan/node_modules/.vite-temp/vite.config.js.timestamp-1782085385846-bef32da7d9e41.mjs
+5:13:05 am [vite] server restart failed
+5:13:21 am [vite] (client) hmr update /src/main.jsx
+5:13:21 am [vite] vite.config.js changed, restarting server...
+5:13:21 am [vite] (client) hmr update /src/styles.css
+5:13:21 am [vite] (client) hmr update /src/main.jsx
+5:13:21 am [vite] (client) page reload index.html
+5:13:21 am [vite] (ssr) page reload index.html
+failed to load config from /Users/satyassrinivasan/Desktop/TFT-Web/frontend/vite.config.js
+5:13:21 am [vite] Cannot find package 'vite' imported from /Users/satyassrinivasan/node_modules/.vite-temp/vite.config.js.timestamp-1782085401253-083720b4a70388.mjs
+5:13:21 am [vite] server restart failed

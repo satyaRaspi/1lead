@@ -17,7 +17,7 @@ From the extracted project folder:
 ```bash
 git init
 git add .
-git commit -m "Initial commit: Truflux website first build v1.0.15"
+git commit -m "Initial commit: Truflux website first build v1.0.16"
 ```
 
 ## 3. Connect to GitHub

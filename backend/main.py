@@ -22,7 +22,7 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "truflux@123")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "demo-admin-token-change-before-production")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://127.0.0.1:5173")
 
-app = FastAPI(title="Truflux Website First Build API", version="1.0.15")
+app = FastAPI(title="Truflux Website First Build API", version="1.0.16")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "http://127.0.0.1:3000"],
@@ -241,7 +241,7 @@ class SalesNavigatorImportRequest(BaseModel):
 def startup_event(): init_db()
 
 @app.get("/api/health")
-def health(): return {"status":"ok", "service":"Truflux Website First Build API", "version":"1.0.15"}
+def health(): return {"status":"ok", "service":"Truflux Website First Build API", "version":"1.0.16"}
 
 @app.post("/api/admin/login")
 def admin_login(payload: LoginRequest):
@@ -251,7 +251,7 @@ def admin_login(payload: LoginRequest):
 
 @app.get("/api/settings")
 def public_settings():
-    return {"brand":"Truflux Technologies", "tagline":"Strategy-led. Data-driven. AI-enabled. Outcome-focused.", "primary_color":"#0B0835", "accent_color":"#0878F8", "version":"1.0.15"}
+    return {"brand":"Truflux Technologies", "tagline":"Strategy-led. Data-driven. AI-enabled. Outcome-focused.", "primary_color":"#0B0835", "accent_color":"#0878F8", "version":"1.0.16"}
 
 @app.get("/api/whitepapers")
 def list_public_whitepapers():

@@ -1,0 +1,15 @@
+{
+  "name": "truflux-website",
+  "version": "1.0.14",
+  "private": true,
+  "description": "Truflux Technologies website first build with gated whitepapers, admin panel and lead agent.",
+  "scripts": {
+    "dev:frontend": "cd frontend && npm run dev",
+    "build:frontend": "cd frontend && npm run build",
+    "install:frontend": "cd frontend && npm install"
+  },
+  "engines": {
+    "node": ">=18.18.0",
+    "npm": ">=9.0.0"
+  }
+}

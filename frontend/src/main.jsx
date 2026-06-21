@@ -4,7 +4,7 @@ import { ArrowRight, BarChart3, BrainCircuit, CalendarClock, CheckCircle2, Downl
 import { API_BASE, apiGet, apiPost, apiPut, track } from './api';
 import './styles.css';
 
-const APP_VERSION = 'First Build v1.0.15';
+const APP_VERSION = 'First Build v1.0.16';
 const UPDATED_DATE = '21 June 2026';
 
 const SERVICES = [
