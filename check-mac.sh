@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-echo "Truflux Website v1.0.14 Mac readiness check"
+echo "Truflux Website v1.0.15 Mac readiness check"
 echo "------------------------------------------"
 echo "Folder: $ROOT"
 echo "Python: $(python3 --version 2>/dev/null || echo 'not found')"

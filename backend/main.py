@@ -22,7 +22,7 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "truflux@123")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "demo-admin-token-change-before-production")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://127.0.0.1:5173")
 
-app = FastAPI(title="Truflux Website First Build API", version="1.0.14")
+app = FastAPI(title="Truflux Website First Build API", version="1.0.15")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "http://127.0.0.1:3000"],
@@ -241,7 +241,7 @@ class SalesNavigatorImportRequest(BaseModel):
 def startup_event(): init_db()
 
 @app.get("/api/health")
-def health(): return {"status":"ok", "service":"Truflux Website First Build API", "version":"1.0.14"}
+def health(): return {"status":"ok", "service":"Truflux Website First Build API", "version":"1.0.15"}
 
 @app.post("/api/admin/login")
 def admin_login(payload: LoginRequest):
@@ -251,7 +251,7 @@ def admin_login(payload: LoginRequest):
 
 @app.get("/api/settings")
 def public_settings():
-    return {"brand":"Truflux Technologies", "tagline":"Strategy-led. Data-driven. AI-enabled. Outcome-focused.", "primary_color":"#0B0835", "accent_color":"#0878F8", "version":"1.0.14"}
+    return {"brand":"Truflux Technologies", "tagline":"Strategy-led. Data-driven. AI-enabled. Outcome-focused.", "primary_color":"#0B0835", "accent_color":"#0878F8", "version":"1.0.15"}
 
 @app.get("/api/whitepapers")
 def list_public_whitepapers():
@@ -843,3 +843,23 @@ def export_leads(authorization: Optional[str] = Header(None)):
     writer.writerow(headers)
     for row in rows: writer.writerow([row[h] for h in headers])
     export_path=STORAGE / "leads_export.csv"; export_path.write_bytes(out.getvalue().encode("utf-8")); return FileResponse(export_path, media_type="text/csv", filename="truflux_leads_export.csv")
+
+# ---- Production SPA serving for Railway/Docker ----
+# When the frontend is built, FastAPI serves the Vite dist folder from the same Railway service.
+FRONTEND_DIST = BASE_DIR.parent / "frontend" / "dist"
+FRONTEND_ASSETS = FRONTEND_DIST / "assets"
+if FRONTEND_ASSETS.exists():
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_ASSETS)), name="frontend-assets")
+
+@app.get("/{full_path:path}")
+def serve_frontend(full_path: str):
+    """Serve the built React app for production routes such as /admin and /whitepapers."""
+    if full_path.startswith("api/") or full_path.startswith("uploads/"):
+        raise HTTPException(status_code=404, detail="Not found")
+    requested = FRONTEND_DIST / full_path
+    if FRONTEND_DIST.exists() and requested.is_file():
+        return FileResponse(requested)
+    index_file = FRONTEND_DIST / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file)
+    return {"message": "Truflux API is running. Frontend dist not found. Run `cd frontend && npm run build` or use Docker/Railway build."}

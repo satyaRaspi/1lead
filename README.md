@@ -1,4 +1,4 @@
-# Truflux Technologies Website — First Build v1.0.14
+# Truflux Technologies Website — First Build v1.0.15
 
 Git-ready local build for the rebuilt **Truflux Technologies** website.
 
@@ -87,7 +87,7 @@ Quick commands:
 ```bash
 git init
 git add .
-git commit -m "Initial commit: Truflux website first build v1.0.14"
+git commit -m "Initial commit: Truflux website first build v1.0.15"
 git branch -M main
 git remote add origin https://github.com/<your-user-or-org>/truflux-website.git
 git push -u origin main
@@ -121,3 +121,9 @@ Do not commit real `.env` files.
 - GA4/GTM production tracking
 - Server-side LinkedIn OAuth integration
 - Deployment configuration for Railway/Vercel/Cloudflare
+
+## Railway deployment note for v1.0.15
+
+This version includes a `Dockerfile` and `railway.json` so Railway deploys the app as one service. The frontend is built during deployment and served by the Python FastAPI backend.
+
+See `docs/RAILWAY_DEPLOY.md` for the full deployment steps.

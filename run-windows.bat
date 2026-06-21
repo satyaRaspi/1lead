@@ -1,7 +1,7 @@
 @echo off
 setlocal
 set ROOT=%~dp0
-echo Starting Truflux Website First Build v1.0.14...
+echo Starting Truflux Website First Build v1.0.15...
 echo This will open backend and frontend command windows.
 echo Stable mode: backend does not use --reload, so local database changes will not restart the app.
 
