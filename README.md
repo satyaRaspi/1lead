@@ -135,11 +135,11 @@ This version removes the frontend `package-lock.json` because an earlier generat
 After committing this version, push to GitHub and redeploy Railway.
 
 
-## v1.0.23 upload reliability fix
+## v1.0.24 upload reliability fix
 
 The Admin → Upload & Schedule screen now keeps the selected PDF in component state and posts the PDF explicitly when Save Whitepaper is clicked. Error messages now show the backend validation detail instead of a generic upload failure.
 
-## v1.0.23 update
+## v1.0.24 update
 
 - Added Admin → Job Schedule.
 - Jobs can run scheduled whitepaper launch processing.

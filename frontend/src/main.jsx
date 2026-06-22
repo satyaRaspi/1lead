@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowRight, BarChart3, BrainCircuit, CalendarClock, CheckCircle2, Download, FileText, Gauge, LockKeyhole, Mail, MapPin, Phone, Rocket, Send, UploadCloud, X, SearchCheck, Copy, Info, Trash2, Pencil, Save, RotateCcw } from 'lucide-react';
+import { ArrowRight, BarChart3, BrainCircuit, CalendarClock, CheckCircle2, Download, FileText, Gauge, LockKeyhole, Mail, MapPin, Phone, Rocket, Send, UploadCloud, X, SearchCheck, Copy, Info, Trash2, Pencil, Save, RotateCcw, Eye, MousePointer2, ShieldAlert, Activity, TrendingUp, AlertTriangle } from 'lucide-react';
 import { API_BASE, apiGet, apiPost, apiPut, apiDelete, track } from './api';
 import './styles.css';
 
-const APP_VERSION = 'First Build v1.0.23';
+const APP_VERSION = 'First Build v1.0.24';
 const UPDATED_DATE = '21 June 2026';
 
 const SERVICES = [
@@ -34,6 +34,20 @@ function App() {
 
   useEffect(() => { refreshWhitepapers().catch(console.error); track('page_view', { page: 'home' }); }, []);
   useEffect(() => { if (page) { window.scrollTo(0, 0); track('page_view', { page }); } }, [page]);
+  useEffect(() => {
+    const start = Date.now();
+    const onClick = (e) => {
+      const el = e.target?.closest?.('button,a,input,select,textarea,label');
+      if (!el) return;
+      const label = (el.innerText || el.getAttribute('aria-label') || el.name || el.placeholder || el.tagName || '').toString().replace(/\s+/g,' ').trim().slice(0,120);
+      track('click', { page, click_target: label || el.tagName, element: el.tagName, class_name: el.className?.toString?.().slice(0,120) || '' });
+    };
+    const sendDuration = () => track('page_duration', { page, duration_ms: Date.now() - start });
+    document.addEventListener('click', onClick, true);
+    window.addEventListener('pagehide', sendDuration);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') sendDuration(); });
+    return () => { document.removeEventListener('click', onClick, true); window.removeEventListener('pagehide', sendDuration); sendDuration(); };
+  }, [page]);
 
   return <div className="app-shell">
     <Header page={page} setPage={setPage} openContact={openContact}/>
@@ -139,6 +153,7 @@ function Admin() {
     ['contacts','Contact Enquiries'],
     ['leadagent','Lead Agent'],
     ['jobs','Job Schedule'],
+    ['stats','Statistics'],
     ['linkedin','Launch & LinkedIn']
   ];
   const activeLabel = adminMenu.find(([k])=>k===tab)?.[1] || 'Dashboard';
@@ -158,7 +173,7 @@ function Admin() {
     </aside>
     <section className="admin-main-panel">
       <div className="admin-head"><div><p className="eyebrow">Admin</p><h1>{activeLabel}</h1><p className="admin-context">Content, leads, launch scheduling and campaign intelligence for Truflux Technologies.</p></div></div>
-      <div className="admin-content">{tab==='dashboard'&&<AdminDashboard token={token}/>} {tab==='upload'&&<AdminUpload token={token}/>} {tab==='library'&&<AdminLibrary token={token}/>} {tab==='leads'&&<AdminLeads token={token}/>} {tab==='contacts'&&<AdminContacts token={token}/>} {tab==='leadagent'&&<AdminLeadAgent token={token}/>} {tab==='jobs'&&<AdminJobs token={token}/>} {tab==='linkedin'&&<AdminLinkedIn token={token}/>}</div>
+      <div className="admin-content">{tab==='dashboard'&&<AdminDashboard token={token}/>} {tab==='upload'&&<AdminUpload token={token}/>} {tab==='library'&&<AdminLibrary token={token}/>} {tab==='leads'&&<AdminLeads token={token}/>} {tab==='contacts'&&<AdminContacts token={token}/>} {tab==='leadagent'&&<AdminLeadAgent token={token}/>} {tab==='jobs'&&<AdminJobs token={token}/>} {tab==='stats'&&<AdminStatistics token={token}/>} {tab==='linkedin'&&<AdminLinkedIn token={token}/>}</div>
     </section>
   </main>;
 }
@@ -602,6 +617,45 @@ Arjun Rao, Chief Information Officer, Meridian Consumer Products, Bengaluru, htt
       <h2>Lead Detail & Appointment Email</h2>
       {selected?<><div className="prospect-detail-grid"><p><strong>Organization</strong><span>{selected.organization}</span></p><p><strong>Signal</strong><span>{selected.signal_type}</span></p><p><strong>Project</strong><span>{selected.project}</span></p><p><strong>Suggested POC</strong><span>{selected.contact_name} — {selected.contact_role}</span></p><p><strong>Confidence</strong><span>{selected.confidence}%</span></p><p><strong>Status</strong><select value={selected.status} onChange={e=>updateStatus(selected.id,e.target.value)}><option>Draft</option><option>Verified</option><option>Contacted</option><option>Meeting Requested</option><option>Converted</option><option>Rejected</option></select></p></div><label className="field"><span>Why this is a lead</span><textarea readOnly value={selected.rationale}/></label><label className="field"><span>Source text</span><textarea readOnly value={selected.source_text}/></label><label className="field"><span>Email subject</span><input readOnly value={selected.email_subject}/></label><label className="field"><span>Introductory email</span><textarea className="email-draft-box" readOnly value={selected.email_body}/></label><button className="primary small" onClick={()=>copyEmail(selected)}><Copy size={16}/> Copy Email</button></>:<p>Select a prospect record to view the prepared introductory email.</p>}
     </div>
+  </div>
+}
+
+function StatMetric({title,value,icon:Icon,sub}){return <div className="stat-metric-card"><div className="stat-metric-icon">{Icon&&<Icon size={22}/>}</div><div><span>{title}</span><strong>{value}</strong>{sub&&<small>{sub}</small>}</div></div>}
+function BarList({title,items,labelKey,valueKey,empty='No data yet'}){const max=Math.max(1,...items.map(i=>Number(i[valueKey]||0)));return <div className="admin-card stat-panel"><h3>{title}</h3><div className="bar-list">{items.length?items.map((item,idx)=><div className="bar-row" key={idx}><div className="bar-row-head"><span>{item[labelKey]||'Unknown'}</span><b>{item[valueKey]||0}</b></div><div className="bar-track"><i style={{width:`${Math.max(4,(Number(item[valueKey]||0)/max)*100)}%`}}></i></div></div>):<p className="muted">{empty}</p>}</div></div>}
+function AdminStatistics({ token }){
+  const [data,setData]=useState(null); const [loading,setLoading]=useState(true); const [err,setErr]=useState('');
+  async function load(){setLoading(true);setErr('');try{setData(await apiGet('/api/admin/statistics',token));}catch(e){setErr('Could not load statistics. Please check backend logs.');}finally{setLoading(false)}}
+  useEffect(()=>{load(); const t=setInterval(load,30000); return()=>clearInterval(t);},[token]);
+  if(loading&&!data)return <p>Loading statistics...</p>;
+  if(err&&!data)return <p className="error">{err}</p>;
+  const s=data.summary||{};
+  return <div className="statistics-page">
+    <section className="admin-card stats-hero">
+      <div><span className="admin-kicker">Statistics</span><h2>Site intelligence, audience behaviour and admin security</h2><p>Tracks page views, clicks, engagement time, whitepaper interest, contact/lead conversion, admin access, failed login attempts and suspicious probes. AI-style insights are generated from local analytics patterns.</p></div>
+      <button className="secondary" onClick={load}>Refresh Statistics</button>
+    </section>
+    <section className="stats-metric-grid">
+      <StatMetric title="Page views" value={s.page_views||0} icon={Eye}/>
+      <StatMetric title="Clicks tracked" value={s.clicks||0} icon={MousePointer2}/>
+      <StatMetric title="Unique visitors" value={s.unique_visitors||0} icon={Activity}/>
+      <StatMetric title="Conversion rate" value={`${s.conversion_rate||0}%`} icon={TrendingUp} sub="Leads + enquiries / page views"/>
+      <StatMetric title="Avg. engagement" value={`${s.avg_session_seconds||0}s`} icon={Gauge}/>
+      <StatMetric title="Security signals" value={s.suspicious_events||0} icon={ShieldAlert} sub={`${s.admin_failed||0} failed admin logins`}/>
+    </section>
+    <section className="stats-grid-two">
+      <div className="admin-card stat-panel ai-insight-panel"><h3>AI analytics insights</h3><div className="insight-list">{(data.ai_insights||[]).map((x,i)=><div className="insight-item" key={i}><BrainCircuit size={18}/><span>{x}</span></div>)}</div><div className="ml-score-row"><span>Engagement quality <b>{data.ml_scores?.engagement_quality||0}</b></span><span>Suspicion risk <b>{data.ml_scores?.suspicion_risk||0}</b></span><span>Content interest <b>{data.ml_scores?.content_interest_signal||0}</b></span></div></div>
+      <BarList title="Most viewed pages / sections" items={data.top_pages||[]} labelKey="page" valueKey="views"/>
+    </section>
+    <section className="stats-grid-two">
+      <BarList title="Click heat / CTA activity" items={data.click_targets||[]} labelKey="target" valueKey="clicks"/>
+      <BarList title="Service-line interest" items={data.service_interest||[]} labelKey="interest_area" valueKey="leads"/>
+    </section>
+    <section className="admin-card stat-panel"><h3>Whitepaper interest by audience</h3><div className="stat-table-wrap"><table><thead><tr><th>No.</th><th>Whitepaper</th><th>Service line</th><th>Leads</th><th>Downloads</th><th>Urgent interest</th></tr></thead><tbody>{(data.whitepaper_interest||[]).map(w=><tr key={w.whitepaper_number+w.title}><td>{w.whitepaper_number}</td><td>{w.title}</td><td>{w.category}</td><td>{w.leads}</td><td>{w.downloads}</td><td>{w.urgent_interest}</td></tr>)}</tbody></table></div></section>
+    <section className="stats-grid-two">
+      <div className="admin-card stat-panel"><h3>Recent site activity text log</h3><div className="log-list">{(data.recent_site_activity||[]).map((r,i)=><div className="log-line" key={i}><span>{r.created_at}</span><b>{r.event_type}</b><em>{r.page||r.path||'site'}</em>{r.click_target&&<small>{r.click_target}</small>}</div>)}</div></div>
+      <div className="admin-card stat-panel"><h3>Admin access and page activity log</h3><div className="log-list">{(data.admin_activity||[]).map((r,i)=><div className="log-line" key={i}><span>{r.created_at}</span><b>{r.action}</b><em>{r.status}</em><small>{r.path}</small></div>)}</div></div>
+    </section>
+    <section className="admin-card stat-panel security-panel"><h3><AlertTriangle size={18}/> Suspicious activity log</h3><div className="log-list">{(data.security_logs||[]).length?(data.security_logs||[]).map((r,i)=><div className="log-line danger-log" key={i}><span>{r.created_at}</span><b>{r.severity}</b><em>{r.event_type}</em><small>{r.details}</small></div>):<p className="muted">No suspicious activity recorded yet.</p>}</div></section>
   </div>
 }
 

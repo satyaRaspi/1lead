@@ -4,7 +4,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pathlib import Path
-import sqlite3, uuid, json, shutil, csv, re, os
+import sqlite3, uuid, json, shutil, csv, re, os, hashlib
 from datetime import datetime, timezone
 from typing import Optional, Any
 from io import StringIO
@@ -22,7 +22,7 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "truflux@123")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "demo-admin-token-change-before-production")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://127.0.0.1:5173")
 
-app = FastAPI(title="Truflux Website First Build API", version="1.0.23")
+app = FastAPI(title="Truflux Website First Build API", version="1.0.24")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "http://127.0.0.1:3000"],
@@ -42,6 +42,57 @@ def get_conn():
 
 def row_to_dict(row):
     return None if row is None else {k: row[k] for k in row.keys()}
+
+def ip_hash_from_request(request: Request) -> str:
+    ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or getattr(request.client, "host", "") or "unknown"
+    return hashlib.sha256((ip + "::truflux").encode("utf-8")).hexdigest()[:16]
+
+def safe_json(data: Any) -> str:
+    try:
+        return json.dumps(data, ensure_ascii=False)[:4000]
+    except Exception:
+        return json.dumps({"raw": str(data)[:1200]})
+
+def insert_site_activity(request: Request, event_type: str, payload: dict[str, Any] | None = None, duration_ms: int = 0, click_target: str = ""):
+    payload = payload or {}
+    try:
+        conn = get_conn()
+        conn.execute("""
+            INSERT INTO site_activity (id,session_id,visitor_id,path,method,event_type,page,duration_ms,click_target,payload,ip_hash,user_agent,referrer,created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            str(uuid.uuid4()), str(payload.get("session_id", ""))[:120], str(payload.get("visitor_id", ""))[:120],
+            str(payload.get("path") or request.url.path)[:260], request.method, event_type,
+            str(payload.get("page", ""))[:120], int(duration_ms or payload.get("duration_ms") or 0),
+            str(click_target or payload.get("click_target") or payload.get("target") or "")[:260],
+            safe_json(payload), ip_hash_from_request(request), request.headers.get("user-agent", "")[:500],
+            request.headers.get("referer", "")[:500], now_iso()
+        ))
+        conn.commit(); conn.close()
+    except Exception:
+        pass
+
+def insert_admin_activity(request: Request, action: str, status: str, username: str = "", payload: dict[str, Any] | None = None):
+    try:
+        conn = get_conn()
+        conn.execute("""
+            INSERT INTO admin_activity (id,username,action,path,status,payload,ip_hash,user_agent,created_at)
+            VALUES (?,?,?,?,?,?,?,?,?)
+        """, (str(uuid.uuid4()), username[:120], action[:160], request.url.path[:260], status[:40], safe_json(payload or {}), ip_hash_from_request(request), request.headers.get("user-agent", "")[:500], now_iso()))
+        conn.commit(); conn.close()
+    except Exception:
+        pass
+
+def insert_security_log(request: Request, event_type: str, details: str, severity: str = "Medium"):
+    try:
+        conn = get_conn()
+        conn.execute("""
+            INSERT INTO security_logs (id,severity,event_type,path,details,ip_hash,user_agent,created_at)
+            VALUES (?,?,?,?,?,?,?,?)
+        """, (str(uuid.uuid4()), severity, event_type[:160], request.url.path[:260], details[:1200], ip_hash_from_request(request), request.headers.get("user-agent", "")[:500], now_iso()))
+        conn.commit(); conn.close()
+    except Exception:
+        pass
 
 def require_admin(authorization: Optional[str]):
     if not authorization or not authorization.startswith("Bearer "):
@@ -115,6 +166,25 @@ def init_db():
         CREATE TABLE IF NOT EXISTS job_runs (
             id TEXT PRIMARY KEY, job_type TEXT NOT NULL, job_name TEXT NOT NULL,
             status TEXT NOT NULL, result TEXT, created_at TEXT
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS site_activity (
+            id TEXT PRIMARY KEY, session_id TEXT, visitor_id TEXT, path TEXT, method TEXT,
+            event_type TEXT, page TEXT, duration_ms INTEGER DEFAULT 0, click_target TEXT,
+            payload TEXT, ip_hash TEXT, user_agent TEXT, referrer TEXT, created_at TEXT
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS admin_activity (
+            id TEXT PRIMARY KEY, username TEXT, action TEXT, path TEXT, status TEXT,
+            payload TEXT, ip_hash TEXT, user_agent TEXT, created_at TEXT
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS security_logs (
+            id TEXT PRIMARY KEY, severity TEXT, event_type TEXT, path TEXT, details TEXT,
+            ip_hash TEXT, user_agent TEXT, created_at TEXT
         )
     """)
     conn.commit(); conn.close(); seed_demo_content()
@@ -262,18 +332,39 @@ class JobRunRequest(BaseModel):
 @app.on_event("startup")
 def startup_event(): init_db()
 
+
+@app.middleware("http")
+async def admin_and_access_logger(request: Request, call_next):
+    path = request.url.path
+    suspicious_markers = ["wp-admin", ".env", "phpmyadmin", "admin.php", "config.php", "../", "etc/passwd", "shell", "select%20", "union%20"]
+    lower_path = path.lower()
+    if any(marker in lower_path for marker in suspicious_markers):
+        insert_security_log(request, "suspicious_path_probe", f"Suspicious path requested: {path}", "High")
+    response = await call_next(request)
+    if path.startswith("/api/admin") and path != "/api/admin/login":
+        auth_present = bool(request.headers.get("authorization"))
+        insert_admin_activity(request, "admin_api_access", str(response.status_code), payload={"auth_present": auth_present, "method": request.method})
+        if response.status_code in (401, 403):
+            insert_security_log(request, "admin_api_unauthorized", f"Unauthorized admin API attempt: {request.method} {path}", "High")
+    elif request.method == "GET" and not path.startswith(("/assets", "/uploads", "/favicon")) and not path.endswith((".js", ".css", ".png", ".jpg", ".svg", ".ico")):
+        insert_site_activity(request, "http_page_request", {"path": path})
+    return response
+
 @app.get("/api/health")
-def health(): return {"status":"ok", "service":"Truflux Website First Build API", "version":"1.0.23"}
+def health(): return {"status":"ok", "service":"Truflux Website First Build API", "version":"1.0.24"}
 
 @app.post("/api/admin/login")
-def admin_login(payload: LoginRequest):
+def admin_login(payload: LoginRequest, request: Request):
     if payload.username == ADMIN_USERNAME and payload.password == ADMIN_PASSWORD:
+        insert_admin_activity(request, "admin_login", "success", payload.username, {"username": payload.username})
         return {"token": ADMIN_TOKEN, "name": "Truflux Admin"}
+    insert_admin_activity(request, "admin_login", "failed", payload.username, {"username": payload.username})
+    insert_security_log(request, "admin_login_failed", f"Failed admin login for username: {payload.username}", "High")
     raise HTTPException(status_code=401, detail="Invalid admin credentials")
 
 @app.get("/api/settings")
 def public_settings():
-    return {"brand":"Truflux Technologies", "tagline":"Strategy-led. Data-driven. AI-enabled. Outcome-focused.", "primary_color":"#0B0835", "accent_color":"#0878F8", "version":"1.0.23"}
+    return {"brand":"Truflux Technologies", "tagline":"Strategy-led. Data-driven. AI-enabled. Outcome-focused.", "primary_color":"#0B0835", "accent_color":"#0878F8", "version":"1.0.24"}
 
 @app.get("/api/whitepapers")
 def list_public_whitepapers():
@@ -535,8 +626,13 @@ def list_leads(authorization: Optional[str] = Header(None)):
     """).fetchall(); conn.close(); return [row_to_dict(r) for r in rows]
 
 @app.post("/api/events")
-def create_event(payload: EventRequest):
-    conn=get_conn(); conn.execute("INSERT INTO events (id,event_type,payload,created_at) VALUES (?,?,?,?)", (str(uuid.uuid4()),payload.event_type,json.dumps(payload.payload),now_iso())); conn.commit(); conn.close(); return {"message":"event recorded"}
+def create_event(payload: EventRequest, request: Request):
+    conn=get_conn(); conn.execute("INSERT INTO events (id,event_type,payload,created_at) VALUES (?,?,?,?)", (str(uuid.uuid4()),payload.event_type,json.dumps(payload.payload),now_iso())); conn.commit(); conn.close()
+    p = payload.payload or {}
+    insert_site_activity(request, payload.event_type, p, int(p.get("duration_ms") or 0), str(p.get("click_target") or p.get("target") or ""))
+    if str(payload.event_type).startswith("admin_"):
+        insert_admin_activity(request, payload.event_type, "tracked", payload=str(p))
+    return {"message":"event recorded"}
 
 @app.get("/api/admin/analytics")
 def analytics(authorization: Optional[str] = Header(None)):
@@ -977,6 +1073,93 @@ def run_linkedin_discovery_job() -> dict[str, Any]:
     conn.execute("INSERT INTO lead_agent_runs (id,query,source_count,created_count,notes,created_at) VALUES (?,?,?,?,?,?)", (str(uuid.uuid4()), "Scheduled CIO discovery / approved LinkedIn-social source review", len(raw_sources), created, "Safe demo job; production should connect only to approved APIs/imports.", now_iso()))
     conn.commit(); conn.close()
     return {"source_count": len(raw_sources), "created_count": created, "message": "CIO discovery job completed using approved/import-safe sample sources"}
+
+
+
+def pct(n, d):
+    return round((float(n) / float(d) * 100.0), 1) if d else 0.0
+
+def build_ai_statistics_insights(summary: dict[str, Any], whitepapers: list[dict[str, Any]], pages: list[dict[str, Any]], security_count: int) -> list[str]:
+    insights = []
+    if whitepapers:
+        top = whitepapers[0]
+        insights.append(f"Audience interest is currently strongest for ‘{top.get('title')}’ with {top.get('leads')} leads and {top.get('downloads')} unlocks/downloads.")
+    if pages:
+        insights.append(f"The most viewed page/section is ‘{pages[0].get('page') or pages[0].get('path')}’, indicating where navigation and CTA placement should be optimized first.")
+    if summary.get("avg_session_seconds", 0) < 20 and summary.get("page_views", 0) > 5:
+        insights.append("Average engagement time is low; consider stronger above-the-fold messaging and clearer whitepaper CTAs.")
+    if security_count:
+        insights.append(f"There are {security_count} suspicious or failed-admin-access signals. Review the security log and rotate admin credentials if attempts increase.")
+    if summary.get("conversion_rate", 0) >= 5:
+        insights.append("Lead conversion from site activity is healthy for a B2B content site. Scale the top-performing topics into campaigns.")
+    else:
+        insights.append("Lead conversion can improve by tightening whitepaper titles, reducing form friction, and promoting the highest-interest service line.")
+    return insights[:6]
+
+@app.get("/api/admin/statistics")
+def admin_statistics(authorization: Optional[str] = Header(None)):
+    require_admin(authorization)
+    conn = get_conn()
+    page_views = conn.execute("SELECT COUNT(*) AS c FROM site_activity WHERE event_type IN ('page_view','http_page_request')").fetchone()["c"]
+    click_count = conn.execute("SELECT COUNT(*) AS c FROM site_activity WHERE event_type IN ('click','cta_click','whitepaper_download_start','contact_dialog_open') OR click_target!=''").fetchone()["c"]
+    lead_count = conn.execute("SELECT COUNT(*) AS c FROM leads").fetchone()["c"]
+    contact_count = conn.execute("SELECT COUNT(*) AS c FROM contacts").fetchone()["c"]
+    suspicious_count = conn.execute("SELECT COUNT(*) AS c FROM security_logs").fetchone()["c"]
+    admin_success = conn.execute("SELECT COUNT(*) AS c FROM admin_activity WHERE action='admin_login' AND status='success'").fetchone()["c"]
+    admin_failed = conn.execute("SELECT COUNT(*) AS c FROM admin_activity WHERE action='admin_login' AND status='failed'").fetchone()["c"]
+    duration_row = conn.execute("SELECT COALESCE(AVG(NULLIF(duration_ms,0)),0) AS avg_ms, COALESCE(MAX(duration_ms),0) AS max_ms FROM site_activity").fetchone()
+    visitors = conn.execute("SELECT COUNT(DISTINCT COALESCE(NULLIF(visitor_id,''), ip_hash)) AS c FROM site_activity").fetchone()["c"]
+    sessions = conn.execute("SELECT COUNT(DISTINCT COALESCE(NULLIF(session_id,''), ip_hash || created_at)) AS c FROM site_activity").fetchone()["c"]
+    top_pages = [row_to_dict(r) for r in conn.execute("""
+        SELECT COALESCE(NULLIF(page,''), path) AS page, COUNT(*) AS views, ROUND(AVG(NULLIF(duration_ms,0))/1000.0,1) AS avg_seconds
+        FROM site_activity WHERE event_type IN ('page_view','http_page_request','page_duration')
+        GROUP BY COALESCE(NULLIF(page,''), path) ORDER BY views DESC LIMIT 10
+    """).fetchall()]
+    click_targets = [row_to_dict(r) for r in conn.execute("""
+        SELECT click_target AS target, COUNT(*) AS clicks FROM site_activity
+        WHERE click_target IS NOT NULL AND click_target!=''
+        GROUP BY click_target ORDER BY clicks DESC LIMIT 10
+    """).fetchall()]
+    whitepaper_interest = [row_to_dict(r) for r in conn.execute("""
+        SELECT w.whitepaper_no, ('WP-' || printf('%04d', COALESCE(w.whitepaper_no,0))) AS whitepaper_number,
+               w.title, w.category, w.downloads,
+               COUNT(l.id) AS leads,
+               COUNT(CASE WHEN l.timeline IN ('Immediate','3 months') THEN 1 END) AS urgent_interest
+        FROM whitepapers w LEFT JOIN leads l ON l.whitepaper_id=w.id
+        GROUP BY w.id ORDER BY leads DESC, w.downloads DESC, w.created_at DESC LIMIT 12
+    """).fetchall()]
+    service_interest = [row_to_dict(r) for r in conn.execute("""
+        SELECT COALESCE(NULLIF(interest_area,''),'Unspecified') AS interest_area, COUNT(*) AS leads
+        FROM leads GROUP BY COALESCE(NULLIF(interest_area,''),'Unspecified') ORDER BY leads DESC LIMIT 8
+    """).fetchall()]
+    recent_site = [row_to_dict(r) for r in conn.execute("SELECT event_type,page,path,click_target,duration_ms,created_at FROM site_activity ORDER BY created_at DESC LIMIT 30").fetchall()]
+    recent_admin = [row_to_dict(r) for r in conn.execute("SELECT username,action,path,status,created_at FROM admin_activity ORDER BY created_at DESC LIMIT 30").fetchall()]
+    security = [row_to_dict(r) for r in conn.execute("SELECT severity,event_type,path,details,created_at FROM security_logs ORDER BY created_at DESC LIMIT 30").fetchall()]
+    conn.close()
+    summary = {
+        "page_views": page_views, "clicks": click_count, "leads": lead_count, "contacts": contact_count,
+        "unique_visitors": visitors, "sessions": sessions, "suspicious_events": suspicious_count,
+        "admin_success": admin_success, "admin_failed": admin_failed,
+        "avg_session_seconds": round((duration_row["avg_ms"] or 0)/1000.0, 1),
+        "max_engagement_seconds": round((duration_row["max_ms"] or 0)/1000.0, 1),
+        "conversion_rate": pct(lead_count + contact_count, page_views)
+    }
+    return {
+        "summary": summary,
+        "top_pages": top_pages,
+        "click_targets": click_targets,
+        "whitepaper_interest": whitepaper_interest,
+        "service_interest": service_interest,
+        "recent_site_activity": recent_site,
+        "admin_activity": recent_admin,
+        "security_logs": security,
+        "ai_insights": build_ai_statistics_insights(summary, whitepaper_interest, top_pages, suspicious_count),
+        "ml_scores": {
+            "engagement_quality": min(100, int((summary["conversion_rate"] * 8) + min(summary["avg_session_seconds"], 120) * .35 + len(click_targets) * 2)),
+            "suspicion_risk": min(100, suspicious_count * 15 + admin_failed * 10),
+            "content_interest_signal": min(100, (lead_count * 12) + sum(int(x.get("urgent_interest") or 0) for x in whitepaper_interest) * 8)
+        }
+    }
 
 @app.get("/api/admin/jobs")
 def list_jobs(authorization: Optional[str] = Header(None)):
