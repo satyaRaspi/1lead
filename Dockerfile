@@ -1,4 +1,4 @@
-# Truflux Website First Build v1.0.16
+# Truflux Website First Build v1.0.22
 # Railway-ready single-service deployment.
 # Builds the Vite frontend, then serves it from the Python FastAPI backend.
 

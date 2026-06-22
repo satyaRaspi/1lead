@@ -1,6 +1,6 @@
 {
   "name": "truflux-website-first-build",
-  "version": "1.0.16",
+  "version": "1.0.23",
   "private": true,
   "type": "module",
   "scripts": {

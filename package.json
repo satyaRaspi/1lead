@@ -1,6 +1,6 @@
 {
   "name": "truflux-website",
-  "version": "1.0.16",
+  "version": "1.0.23",
   "private": true,
   "description": "Truflux Technologies website first build with gated whitepapers, admin panel and lead agent.",
   "scripts": {

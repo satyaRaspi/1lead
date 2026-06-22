@@ -1,8 +1,8 @@
-# Railway Deployment — Truflux Website v1.0.16
+# Railway Deployment — Truflux Website v1.0.23
 
 This build is Railway-ready as a single service.
 
-## Why v1.0.16 fixes the Railpack error
+## Why v1.0.23 fixes the Railpack error
 
 Railway/Railpack previously detected Node at the repository root but did not find a start command. This version adds:
 
@@ -42,8 +42,8 @@ In Railway service settings, set the builder to Dockerfile or redeploy after con
 ## Local Docker test
 
 ```bash
-docker build -t truflux-website:1.0.16 .
-docker run --rm -p 8000:8000 -e PORT=8000 truflux-website:1.0.16
+docker build -t truflux-website:1.0.23 .
+docker run --rm -p 8000:8000 -e PORT=8000 truflux-website:1.0.23
 ```
 
 Then open:
@@ -54,6 +54,6 @@ http://127.0.0.1:8000/admin
 http://127.0.0.1:8000/api/health
 ```
 
-## v1.0.16 note: Vite build fix
+## v1.0.23 note: Vite build fix
 
-If Railway showed `sh: 1: vite: not found`, use v1.0.16 or later. The fix removes the frontend lock file and updates the Dockerfile to install Vite before running the production build.
+If Railway showed `sh: 1: vite: not found`, use v1.0.23 or later. The fix removes the frontend lock file and updates the Dockerfile to install Vite before running the production build.

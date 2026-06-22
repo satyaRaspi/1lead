@@ -1,4 +1,4 @@
-# Truflux Technologies Website — First Build v1.0.16
+# Truflux Technologies Website — First Build v1.0.19
 
 Git-ready local build for the rebuilt **Truflux Technologies** website.
 
@@ -87,7 +87,7 @@ Quick commands:
 ```bash
 git init
 git add .
-git commit -m "Initial commit: Truflux website first build v1.0.16"
+git commit -m "Initial commit: Truflux website first build v1.0.19"
 git branch -M main
 git remote add origin https://github.com/<your-user-or-org>/truflux-website.git
 git push -u origin main
@@ -122,14 +122,29 @@ Do not commit real `.env` files.
 - Server-side LinkedIn OAuth integration
 - Deployment configuration for Railway/Vercel/Cloudflare
 
-## Railway deployment note for v1.0.16
+## Railway deployment note for v1.0.19
 
 This version includes a `Dockerfile` and `railway.json` so Railway deploys the app as one service. The frontend is built during deployment and served by the Python FastAPI backend.
 
 See `docs/RAILWAY_DEPLOY.md` for the full deployment steps.
 
-## Railway build fix in v1.0.16
+## Railway build fix in v1.0.19
 
 This version removes the frontend `package-lock.json` because an earlier generated lock file could contain environment-specific registry URLs. The Dockerfile now installs frontend dependencies directly from `frontend/package.json` and runs Vite from `./node_modules/.bin/vite`, which avoids the `vite: not found` Railway build error.
 
 After committing this version, push to GitHub and redeploy Railway.
+
+
+## v1.0.23 upload reliability fix
+
+The Admin → Upload & Schedule screen now keeps the selected PDF in component state and posts the PDF explicitly when Save Whitepaper is clicked. Error messages now show the backend validation detail instead of a generic upload failure.
+
+## v1.0.23 update
+
+- Added Admin → Job Schedule.
+- Jobs can run scheduled whitepaper launch processing.
+- Added safe LinkedIn / social CIO discovery job execution using approved/import-style sources only.
+- Added recent job run history.
+- Added scheduled whitepaper queue view.
+
+Important: LinkedIn-related jobs in this local build do not scrape LinkedIn. They are designed for approved imports, CRM sync, Sales Navigator assisted review, and official integrations.

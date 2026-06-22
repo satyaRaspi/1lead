@@ -22,7 +22,7 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "truflux@123")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "demo-admin-token-change-before-production")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://127.0.0.1:5173")
 
-app = FastAPI(title="Truflux Website First Build API", version="1.0.16")
+app = FastAPI(title="Truflux Website First Build API", version="1.0.23")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "http://127.0.0.1:3000"],
@@ -57,9 +57,20 @@ def init_db():
             id TEXT PRIMARY KEY, title TEXT NOT NULL, summary TEXT NOT NULL, description TEXT,
             category TEXT, seo_title TEXT, meta_description TEXT, status TEXT DEFAULT 'Draft',
             launch_at TEXT, created_at TEXT, updated_at TEXT, pdf_path TEXT, poster_path TEXT,
-            linkedin_copy TEXT, downloads INTEGER DEFAULT 0
+            linkedin_copy TEXT, downloads INTEGER DEFAULT 0,
+            whitepaper_no INTEGER
         )
     """)
+    # Migration for older local databases created before running numbers were added.
+    try:
+        cur.execute("ALTER TABLE whitepapers ADD COLUMN whitepaper_no INTEGER")
+    except sqlite3.OperationalError:
+        pass
+    existing_without_no = cur.execute("SELECT id FROM whitepapers WHERE whitepaper_no IS NULL ORDER BY created_at ASC").fetchall()
+    next_no = cur.execute("SELECT COALESCE(MAX(whitepaper_no),0) + 1 AS n FROM whitepapers").fetchone()["n"]
+    for row in existing_without_no:
+        cur.execute("UPDATE whitepapers SET whitepaper_no=? WHERE id=?", (next_no, row["id"]))
+        next_no += 1
     cur.execute("""
         CREATE TABLE IF NOT EXISTS leads (
             id TEXT PRIMARY KEY, whitepaper_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL,
@@ -98,6 +109,12 @@ def init_db():
         CREATE TABLE IF NOT EXISTS sales_navigator_imports (
             id TEXT PRIMARY KEY, saved_search_name TEXT, saved_search_url TEXT,
             pasted_count INTEGER, created_count INTEGER, notes TEXT, created_at TEXT
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS job_runs (
+            id TEXT PRIMARY KEY, job_type TEXT NOT NULL, job_name TEXT NOT NULL,
+            status TEXT NOT NULL, result TEXT, created_at TEXT
         )
     """)
     conn.commit(); conn.close(); seed_demo_content()
@@ -167,15 +184,15 @@ def seed_demo_content():
         ("Building an AI-Ready Data Foundation", "Why dashboards alone are not enough, and how data foundations enable AI-led decisions.", "Data and Insights", "A practical view on data quality, KPI frameworks, analytics layers, and decision intelligence foundations for AI-enabled enterprises.", "AI readiness starts before the model. It starts with data discipline, governance, decision layers, and insight design.", "ai-ready-data-foundation"),
         ("Consulting-Led Product Engineering", "How to convert strategic ideas into working platforms with discipline, speed, and governance.", "Consulting and Innovation", "A Truflux perspective on combining consulting rigor and product engineering to build practical, usable and measurable platforms.", "The strongest digital products are not only engineered well. They are framed well, governed well, and measured well.", "consulting-led-product-engineering"),
     ]
-    for title, summary, category, desc, linkedin, slug in samples:
+    for idx, (title, summary, category, desc, linkedin, slug) in enumerate(samples, start=1):
         wp_id = str(uuid.uuid4()); pdf = UPLOADS / f"{slug}.pdf"; poster = POSTERS / f"{slug}.svg"
         simple_pdf(pdf, title, desc + "\n\nThis is a demo placeholder whitepaper for local testing. Upload the real Truflux PDF from the Admin panel.")
         poster_svg(poster, title, summary[:85])
         cur.execute("""
             INSERT INTO whitepapers
-            (id, title, summary, description, category, seo_title, meta_description, status, launch_at, created_at, updated_at, pdf_path, poster_path, linkedin_copy, downloads)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'Published', ?, ?, ?, ?, ?, ?, 0)
-        """, (wp_id, title, summary, desc, category, title + " | Truflux Technologies", summary, now_iso(), now_iso(), now_iso(), str(pdf.relative_to(STORAGE)), str(poster.relative_to(STORAGE)), linkedin))
+            (id, title, summary, description, category, seo_title, meta_description, status, launch_at, created_at, updated_at, pdf_path, poster_path, linkedin_copy, downloads, whitepaper_no)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'Published', ?, ?, ?, ?, ?, ?, 0, ?)
+        """, (wp_id, title, summary, desc, category, title + " | Truflux Technologies", summary, now_iso(), now_iso(), now_iso(), str(pdf.relative_to(STORAGE)), str(poster.relative_to(STORAGE)), linkedin, idx))
     conn.commit(); conn.close()
 
 class LoginRequest(BaseModel):
@@ -237,11 +254,16 @@ class SalesNavigatorImportRequest(BaseModel):
     pasted_records: str = ""
     notes: Optional[str] = ""
 
+class JobRunRequest(BaseModel):
+    job_type: str
+    mode: Optional[str] = "run_now"
+
+
 @app.on_event("startup")
 def startup_event(): init_db()
 
 @app.get("/api/health")
-def health(): return {"status":"ok", "service":"Truflux Website First Build API", "version":"1.0.16"}
+def health(): return {"status":"ok", "service":"Truflux Website First Build API", "version":"1.0.23"}
 
 @app.post("/api/admin/login")
 def admin_login(payload: LoginRequest):
@@ -251,28 +273,22 @@ def admin_login(payload: LoginRequest):
 
 @app.get("/api/settings")
 def public_settings():
-    return {"brand":"Truflux Technologies", "tagline":"Strategy-led. Data-driven. AI-enabled. Outcome-focused.", "primary_color":"#0B0835", "accent_color":"#0878F8", "version":"1.0.16"}
+    return {"brand":"Truflux Technologies", "tagline":"Strategy-led. Data-driven. AI-enabled. Outcome-focused.", "primary_color":"#0B0835", "accent_color":"#0878F8", "version":"1.0.23"}
 
 @app.get("/api/whitepapers")
 def list_public_whitepapers():
     conn = get_conn(); rows = conn.execute("SELECT * FROM whitepapers WHERE status = 'Published' ORDER BY created_at DESC").fetchall(); conn.close()
     result=[]
     for row in rows:
-        d=row_to_dict(row)
-        if d.get("poster_path"): d["poster_url"] = f"http://127.0.0.1:8000/uploads/{d['poster_path']}"
+        d=with_whitepaper_display_fields(row_to_dict(row))
         d.pop("pdf_path", None); result.append(d)
     return result
 
 @app.get("/api/admin/whitepapers")
 def list_admin_whitepapers(authorization: Optional[str] = Header(None)):
     require_admin(authorization)
-    conn = get_conn(); rows = conn.execute("SELECT * FROM whitepapers ORDER BY created_at DESC").fetchall(); conn.close()
-    result=[]
-    for row in rows:
-        d=row_to_dict(row)
-        if d.get("poster_path"): d["poster_url"] = f"http://127.0.0.1:8000/uploads/{d['poster_path']}"
-        result.append(d)
-    return result
+    conn = get_conn(); rows = conn.execute("SELECT * FROM whitepapers ORDER BY whitepaper_no DESC, created_at DESC").fetchall(); conn.close()
+    return [with_whitepaper_display_fields(row_to_dict(r)) for r in rows]
 
 
 
@@ -355,6 +371,18 @@ def save_upload(file: UploadFile, target_dir: Path) -> str:
     return str(target_path.relative_to(STORAGE))
 
 
+def with_whitepaper_display_fields(d: dict) -> dict:
+    no = d.get("whitepaper_no") or 0
+    d["whitepaper_number"] = f"WP-{int(no):04d}" if no else "WP-0000"
+    if d.get("poster_path"):
+        d["poster_url"] = f"http://127.0.0.1:8000/uploads/{d['poster_path']}"
+    return d
+
+def next_whitepaper_no(conn) -> int:
+    row = conn.execute("SELECT COALESCE(MAX(whitepaper_no),0) + 1 AS n FROM whitepapers").fetchone()
+    return int(row["n"] or 1)
+
+
 @app.post("/api/admin/whitepapers/analyze")
 def analyze_whitepaper(authorization: Optional[str] = Header(None), whitepaper_pdf: UploadFile = File(...)):
     require_admin(authorization)
@@ -362,25 +390,93 @@ def analyze_whitepaper(authorization: Optional[str] = Header(None), whitepaper_p
         raise HTTPException(status_code=400, detail="Please upload a PDF whitepaper for AI analysis")
     text = extract_pdf_text_for_ai(whitepaper_pdf)
     metadata = generate_whitepaper_metadata(text, whitepaper_pdf.filename)
-    conn = get_conn()
-    conn.execute("INSERT INTO events (id,event_type,payload,created_at) VALUES (?,?,?,?)", (str(uuid.uuid4()), "whitepaper_ai_metadata_generated", json.dumps({"filename": whitepaper_pdf.filename, "title": metadata.get("title"), "confidence": metadata.get("confidence")}), now_iso()))
-    conn.commit(); conn.close()
+    # Defensive logging: the AI fill must still return metadata even if the local
+    # demo database is not initialized yet or logging fails.
+    try:
+        init_db()
+        conn = get_conn()
+        conn.execute("INSERT INTO events (id,event_type,payload,created_at) VALUES (?,?,?,?)", (str(uuid.uuid4()), "whitepaper_ai_metadata_generated", json.dumps({"filename": whitepaper_pdf.filename, "title": metadata.get("title"), "confidence": metadata.get("confidence")}), now_iso()))
+        conn.commit(); conn.close()
+    except Exception:
+        pass
     return metadata
 
 @app.post("/api/admin/whitepapers")
 def create_whitepaper(
-    authorization: Optional[str] = Header(None), title: str = Form(...), summary: str = Form(...), description: str = Form(""),
+    authorization: Optional[str] = Header(None), title: str = Form(""), summary: str = Form(""), description: str = Form(""),
     category: str = Form("Insights"), seo_title: str = Form(""), meta_description: str = Form(""), status: str = Form("Draft"),
-    launch_at: str = Form(""), linkedin_copy: str = Form(""), whitepaper_pdf: UploadFile = File(...), poster: Optional[UploadFile] = File(None),
+    launch_at: str = Form(""), linkedin_copy: str = Form(""), whitepaper_pdf: Optional[UploadFile] = File(None), poster: Optional[UploadFile] = File(None),
 ):
-    require_admin(authorization); status = status if status in ["Draft", "Scheduled", "Published"] else "Draft"
-    pdf_path = save_upload(whitepaper_pdf, UPLOADS); poster_path = save_upload(poster, POSTERS) if poster and poster.filename else ""
-    wp_id = str(uuid.uuid4()); conn=get_conn()
+    require_admin(authorization)
+    title = (title or "").strip()
+    summary = (summary or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Title is required")
+    if not summary:
+        raise HTTPException(status_code=400, detail="Short Summary is required")
+    if not whitepaper_pdf or not whitepaper_pdf.filename:
+        raise HTTPException(status_code=400, detail="Whitepaper PDF is required")
+    if not whitepaper_pdf.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Selected whitepaper file must be a PDF")
+    status = status if status in ["Draft", "Scheduled", "Published"] else "Draft"
+    try:
+        pdf_path = save_upload(whitepaper_pdf, UPLOADS)
+        poster_path = save_upload(poster, POSTERS) if poster and poster.filename else ""
+        wp_id = str(uuid.uuid4())
+        conn=get_conn()
+        wp_no = next_whitepaper_no(conn)
+        conn.execute("""
+            INSERT INTO whitepapers (id,title,summary,description,category,seo_title,meta_description,status,launch_at,created_at,updated_at,pdf_path,poster_path,linkedin_copy,downloads,whitepaper_no)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)
+        """, (wp_id,title,summary,description,category,seo_title,meta_description,status,launch_at,now_iso(),now_iso(),pdf_path,poster_path,linkedin_copy,wp_no))
+        conn.commit(); conn.close()
+        return {"id": wp_id, "message":"Whitepaper created", "status": status, "whitepaper_number": f"WP-{wp_no:04d}"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Whitepaper upload failed: {type(exc).__name__}")
+
+@app.put("/api/admin/whitepapers/{whitepaper_id}")
+def update_whitepaper(
+    whitepaper_id: str, authorization: Optional[str] = Header(None), title: str = Form(""), summary: str = Form(""), description: str = Form(""),
+    category: str = Form("Insights"), seo_title: str = Form(""), meta_description: str = Form(""), status: str = Form("Draft"),
+    launch_at: str = Form(""), linkedin_copy: str = Form(""), whitepaper_pdf: Optional[UploadFile] = File(None), poster: Optional[UploadFile] = File(None),
+):
+    require_admin(authorization)
+    title = (title or "").strip(); summary = (summary or "").strip()
+    if not title: raise HTTPException(status_code=400, detail="Title is required")
+    if not summary: raise HTTPException(status_code=400, detail="Short Summary is required")
+    if status not in ["Draft", "Scheduled", "Published"]: status = "Draft"
+    conn=get_conn(); existing=conn.execute("SELECT * FROM whitepapers WHERE id=?", (whitepaper_id,)).fetchone()
+    if not existing:
+        conn.close(); raise HTTPException(status_code=404, detail="Whitepaper not found")
+    pdf_path = existing["pdf_path"]
+    poster_path = existing["poster_path"] or ""
+    if whitepaper_pdf and whitepaper_pdf.filename:
+        if not whitepaper_pdf.filename.lower().endswith(".pdf"):
+            conn.close(); raise HTTPException(status_code=400, detail="Selected whitepaper file must be a PDF")
+        pdf_path = save_upload(whitepaper_pdf, UPLOADS)
+    if poster and poster.filename:
+        poster_path = save_upload(poster, POSTERS)
     conn.execute("""
-        INSERT INTO whitepapers (id,title,summary,description,category,seo_title,meta_description,status,launch_at,created_at,updated_at,pdf_path,poster_path,linkedin_copy,downloads)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)
-    """, (wp_id,title,summary,description,category,seo_title,meta_description,status,launch_at,now_iso(),now_iso(),pdf_path,poster_path,linkedin_copy))
-    conn.commit(); conn.close(); return {"id": wp_id, "message":"Whitepaper created", "status": status}
+        UPDATE whitepapers
+        SET title=?, summary=?, description=?, category=?, seo_title=?, meta_description=?, status=?, launch_at=?, updated_at=?, pdf_path=?, poster_path=?, linkedin_copy=?
+        WHERE id=?
+    """, (title,summary,description,category,seo_title,meta_description,status,launch_at,now_iso(),pdf_path,poster_path,linkedin_copy,whitepaper_id))
+    conn.commit(); conn.close()
+    return {"message":"Whitepaper updated", "id": whitepaper_id, "status": status}
+
+@app.delete("/api/admin/whitepapers/{whitepaper_id}")
+def delete_whitepaper(whitepaper_id: str, authorization: Optional[str] = Header(None)):
+    require_admin(authorization)
+    conn=get_conn(); existing=conn.execute("SELECT * FROM whitepapers WHERE id=?", (whitepaper_id,)).fetchone()
+    if not existing:
+        conn.close(); raise HTTPException(status_code=404, detail="Whitepaper not found")
+    # Keep captured leads for audit/history, but remove the whitepaper from public/admin library.
+    conn.execute("DELETE FROM whitepapers WHERE id=?", (whitepaper_id,))
+    conn.execute("INSERT INTO events (id,event_type,payload,created_at) VALUES (?,?,?,?)", (str(uuid.uuid4()),"whitepaper_deleted",json.dumps({"whitepaper_id":whitepaper_id,"title":existing["title"]}),now_iso()))
+    conn.commit(); conn.close()
+    return {"message":"Whitepaper deleted", "id": whitepaper_id}
 
 @app.put("/api/admin/whitepapers/{whitepaper_id}/status")
 def update_status(whitepaper_id: str, payload: StatusRequest, authorization: Optional[str] = Header(None)):
@@ -462,10 +558,9 @@ def launch_queue(authorization: Optional[str] = Header(None)):
 
 @app.post("/api/admin/launches/process-due")
 def process_due_launches(authorization: Optional[str] = Header(None)):
-    require_admin(authorization); now=now_iso(); conn=get_conn(); rows=conn.execute("SELECT * FROM whitepapers WHERE status='Scheduled' AND launch_at!='' AND launch_at <= ?", (now,)).fetchall(); ids=[r["id"] for r in rows]
-    for wp_id in ids:
-        conn.execute("UPDATE whitepapers SET status='Published', updated_at=? WHERE id=?", (now_iso(), wp_id)); conn.execute("INSERT INTO events (id,event_type,payload,created_at) VALUES (?,?,?,?)", (str(uuid.uuid4()),"whitepaper_scheduled_launch",json.dumps({"whitepaper_id":wp_id}),now_iso()))
-    conn.commit(); conn.close(); return {"published_count": len(ids), "published_ids": ids}
+    require_admin(authorization)
+    result = process_due_whitepaper_launches()
+    return {"published_count": result["published_count"], "published_ids": result["published_ids"]}
 
 @app.get("/api/admin/linkedin/post/{whitepaper_id}")
 def linkedin_post(whitepaper_id: str, authorization: Optional[str] = Header(None)):
@@ -843,6 +938,94 @@ def export_leads(authorization: Optional[str] = Header(None)):
     writer.writerow(headers)
     for row in rows: writer.writerow([row[h] for h in headers])
     export_path=STORAGE / "leads_export.csv"; export_path.write_bytes(out.getvalue().encode("utf-8")); return FileResponse(export_path, media_type="text/csv", filename="truflux_leads_export.csv")
+
+
+
+def log_job_run(job_type: str, job_name: str, status: str, result: dict[str, Any]) -> dict[str, Any]:
+    record = {"id": str(uuid.uuid4()), "job_type": job_type, "job_name": job_name, "status": status, "result": result, "created_at": now_iso()}
+    conn = get_conn()
+    conn.execute("INSERT INTO job_runs (id,job_type,job_name,status,result,created_at) VALUES (?,?,?,?,?,?)", (record["id"], job_type, job_name, status, json.dumps(result), record["created_at"]))
+    conn.execute("INSERT INTO events (id,event_type,payload,created_at) VALUES (?,?,?,?)", (str(uuid.uuid4()), "job_run", json.dumps({"job_type": job_type, "status": status, **result}), now_iso()))
+    conn.commit(); conn.close()
+    return record
+
+def process_due_whitepaper_launches() -> dict[str, Any]:
+    now = now_iso()
+    conn = get_conn()
+    rows = conn.execute("SELECT id,title,launch_at FROM whitepapers WHERE status='Scheduled' AND launch_at!='' AND launch_at <= ?", (now,)).fetchall()
+    ids = [r["id"] for r in rows]
+    for wp_id in ids:
+        conn.execute("UPDATE whitepapers SET status='Published', updated_at=? WHERE id=?", (now_iso(), wp_id))
+        conn.execute("INSERT INTO events (id,event_type,payload,created_at) VALUES (?,?,?,?)", (str(uuid.uuid4()), "whitepaper_scheduled_launch", json.dumps({"whitepaper_id": wp_id}), now_iso()))
+    conn.commit(); conn.close()
+    return {"published_count": len(ids), "published_ids": ids, "message": "Due scheduled whitepapers processed"}
+
+def run_linkedin_discovery_job() -> dict[str, Any]:
+    # Safe local job: uses demo/approved-source style snippets. It does not scrape LinkedIn or bypass platform terms.
+    raw_sources = demo_cio_sources()
+    prospects = [create_cio_prospect_from_source(src) for src in raw_sources]
+    conn = get_conn(); created = 0
+    for p in prospects:
+        duplicate = conn.execute("SELECT id FROM prospect_leads WHERE source_text=? LIMIT 1", (p["source_text"],)).fetchone()
+        if duplicate:
+            continue
+        conn.execute("""
+            INSERT INTO prospect_leads (id,source_platform,source_url,source_text,signal_type,organization,project,contact_name,contact_role,confidence,rationale,recommended_action,email_subject,email_body,status,created_at,updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (p["id"],p["source_platform"],p["source_url"],p["source_text"],p["signal_type"],p["organization"],p["project"],p["contact_name"],p["contact_role"],p["confidence"],p["rationale"],p["recommended_action"],p["email_subject"],p["email_body"],p["status"],p["created_at"],p["updated_at"]))
+        created += 1
+    conn.execute("INSERT INTO lead_agent_runs (id,query,source_count,created_count,notes,created_at) VALUES (?,?,?,?,?,?)", (str(uuid.uuid4()), "Scheduled CIO discovery / approved LinkedIn-social source review", len(raw_sources), created, "Safe demo job; production should connect only to approved APIs/imports.", now_iso()))
+    conn.commit(); conn.close()
+    return {"source_count": len(raw_sources), "created_count": created, "message": "CIO discovery job completed using approved/import-safe sample sources"}
+
+@app.get("/api/admin/jobs")
+def list_jobs(authorization: Optional[str] = Header(None)):
+    require_admin(authorization)
+    conn = get_conn()
+    due = conn.execute("SELECT id,title,status,launch_at,whitepaper_no FROM whitepapers WHERE status='Scheduled' ORDER BY launch_at ASC").fetchall()
+    runs = conn.execute("SELECT * FROM job_runs ORDER BY created_at DESC LIMIT 25").fetchall()
+    due_count = conn.execute("SELECT COUNT(*) AS c FROM whitepapers WHERE status='Scheduled' AND launch_at!='' AND launch_at <= ?", (now_iso(),)).fetchone()["c"]
+    conn.close()
+    jobs = [
+        {
+            "job_type": "whitepaper_launch",
+            "job_name": "Whitepaper Scheduled Launch",
+            "schedule": "Manual / Due-date processor",
+            "status": "Due" if due_count else "Ready",
+            "due_count": due_count,
+            "description": "Publishes whitepapers whose scheduled launch date/time has arrived."
+        },
+        {
+            "job_type": "linkedin_discovery",
+            "job_name": "LinkedIn / Social CIO Discovery",
+            "schedule": "Manual approved-source run",
+            "status": "Ready",
+            "due_count": 0,
+            "description": "Runs CIO discovery using approved/imported snippets or official integrations. This local build does not scrape LinkedIn."
+        }
+    ]
+    return {"jobs": jobs, "scheduled_whitepapers": [with_whitepaper_display_fields(row_to_dict(r)) for r in due], "recent_runs": [row_to_dict(r) for r in runs]}
+
+@app.post("/api/admin/jobs/run")
+def run_job(payload: JobRunRequest, authorization: Optional[str] = Header(None)):
+    require_admin(authorization)
+    job_type = (payload.job_type or "").strip().lower()
+    try:
+        if job_type == "whitepaper_launch":
+            result = process_due_whitepaper_launches()
+            log_job_run(job_type, "Whitepaper Scheduled Launch", "Success", result)
+            return result
+        if job_type == "linkedin_discovery":
+            result = run_linkedin_discovery_job()
+            log_job_run(job_type, "LinkedIn / Social CIO Discovery", "Success", result)
+            return result
+        raise HTTPException(status_code=400, detail="Unknown job type")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        result = {"error": str(exc)}
+        log_job_run(job_type or "unknown", "Job Execution", "Failed", result)
+        raise HTTPException(status_code=500, detail=str(exc))
 
 # ---- Production SPA serving for Railway/Docker ----
 # When the frontend is built, FastAPI serves the Vite dist folder from the same Railway service.

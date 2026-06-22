@@ -12,7 +12,7 @@ mkdir -p "$LOG_DIR"
 BACKEND_LOG="$LOG_DIR/backend.log"
 FRONTEND_LOG="$LOG_DIR/frontend.log"
 
-printf "\nStarting Truflux Website First Build v1.0.16 for macOS...\n"
+printf "\nStarting Truflux Website First Build v1.0.22 for macOS...\n"
 printf "Stable mode: no uvicorn --reload, so SQLite/uploads will not trigger backend restarts.\n"
 printf "The frontend package lock is intentionally omitted; npm installs from the public npm registry.\n\n"
 

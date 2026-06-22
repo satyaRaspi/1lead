@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowRight, BarChart3, BrainCircuit, CalendarClock, CheckCircle2, Download, FileText, Gauge, LockKeyhole, Mail, MapPin, Phone, Rocket, Send, UploadCloud, X, SearchCheck, Copy } from 'lucide-react';
-import { API_BASE, apiGet, apiPost, apiPut, track } from './api';
+import { ArrowRight, BarChart3, BrainCircuit, CalendarClock, CheckCircle2, Download, FileText, Gauge, LockKeyhole, Mail, MapPin, Phone, Rocket, Send, UploadCloud, X, SearchCheck, Copy, Info, Trash2, Pencil, Save, RotateCcw } from 'lucide-react';
+import { API_BASE, apiGet, apiPost, apiPut, apiDelete, track } from './api';
 import './styles.css';
 
-const APP_VERSION = 'First Build v1.0.16';
+const APP_VERSION = 'First Build v1.0.23';
 const UPDATED_DATE = '21 June 2026';
 
 const SERVICES = [
@@ -52,7 +52,7 @@ function Header({ page, setPage, openContact }) {
   const nav = [['home','Home'], ['services','Services'], ['whitepapers','Whitepapers'], ['method','Method'], ['admin','Admin']];
   return <header className="topbar">
     <button className="brand" onClick={()=>setPage('home')} aria-label="Go to homepage"><img src="/truflux-logo.png" alt="Truflux Technologies logo"/><span>TRUFLUX<br/>TECHNOLOGIES</span></button>
-    <nav>{nav.map(([key,label])=><button key={key} className={page===key?'active':''} onClick={()=>setPage(key)}>{label}</button>)}<button onClick={openContact}>Contact</button></nav>
+    <nav>{nav.map(([key,label])=><button key={key} className={page===key?'active':''} onClick={()=>setPage(key)}>{label}</button>)}</nav>
     <button className="nav-cta" onClick={openContact}>Contact</button>
   </header>;
 }
@@ -138,6 +138,7 @@ function Admin() {
     ['leads','Whitepaper Leads'],
     ['contacts','Contact Enquiries'],
     ['leadagent','Lead Agent'],
+    ['jobs','Job Schedule'],
     ['linkedin','Launch & LinkedIn']
   ];
   const activeLabel = adminMenu.find(([k])=>k===tab)?.[1] || 'Dashboard';
@@ -157,7 +158,7 @@ function Admin() {
     </aside>
     <section className="admin-main-panel">
       <div className="admin-head"><div><p className="eyebrow">Admin</p><h1>{activeLabel}</h1><p className="admin-context">Content, leads, launch scheduling and campaign intelligence for Truflux Technologies.</p></div></div>
-      <div className="admin-content">{tab==='dashboard'&&<AdminDashboard token={token}/>} {tab==='upload'&&<AdminUpload token={token}/>} {tab==='library'&&<AdminLibrary token={token}/>} {tab==='leads'&&<AdminLeads token={token}/>} {tab==='contacts'&&<AdminContacts token={token}/>} {tab==='leadagent'&&<AdminLeadAgent token={token}/>} {tab==='linkedin'&&<AdminLinkedIn token={token}/>}</div>
+      <div className="admin-content">{tab==='dashboard'&&<AdminDashboard token={token}/>} {tab==='upload'&&<AdminUpload token={token}/>} {tab==='library'&&<AdminLibrary token={token}/>} {tab==='leads'&&<AdminLeads token={token}/>} {tab==='contacts'&&<AdminContacts token={token}/>} {tab==='leadagent'&&<AdminLeadAgent token={token}/>} {tab==='jobs'&&<AdminJobs token={token}/>} {tab==='linkedin'&&<AdminLinkedIn token={token}/>}</div>
     </section>
   </main>;
 }
@@ -165,9 +166,12 @@ function AdminDashboard({ token }) { const [data,setData]=useState(null); useEff
 function Metric({title,value}){return <div className="metric"><p>{title}</p><strong>{value}</strong></div>}
 function AdminUpload({ token }) {
   const [msg,setMsg]=useState('');
+  const [msgType,setMsgType]=useState('notice');
   const [loading,setLoading]=useState(false);
   const [aiLoading,setAiLoading]=useState(false);
   const [aiNote,setAiNote]=useState('');
+  const [selectedPdf,setSelectedPdf]=useState(null);
+  const [pdfName,setPdfName]=useState('');
   const formRef = useRef(null);
 
   function fillField(name, value) {
@@ -175,24 +179,44 @@ function AdminUpload({ token }) {
     if (el && value !== undefined && value !== null) el.value = value;
   }
 
-  async function analyzeFile(file) {
-    if (!file) return;
+  function getSelectedPdf() {
+    return selectedPdf || formRef.current?.elements?.whitepaper_pdf?.files?.[0] || null;
+  }
+
+  function setFileFromInput(e) {
+    const file = e.target.files?.[0] || null;
+    setSelectedPdf(file);
+    setPdfName(file?.name || '');
+    setAiNote('');
+    setMsg('');
+  }
+
+  function valueOf(form, name) {
+    return String(form.elements?.[name]?.value || '').trim();
+  }
+
+  async function analyzeSelectedFile() {
+    const file = getSelectedPdf();
+    if (!file) {
+      setAiNote('Please select the whitepaper PDF first, then click AI Fill Details.');
+      return;
+    }
     setAiNote('');
     setAiLoading(true);
     const fd = new FormData();
     fd.append('whitepaper_pdf', file);
     try {
       const data = await apiPost('/api/admin/whitepapers/analyze', fd, token);
-      fillField('title', data.title);
-      fillField('category', data.category);
-      fillField('summary', data.summary);
-      fillField('description', data.description);
-      fillField('seo_title', data.seo_title);
-      fillField('meta_description', data.meta_description);
-      fillField('linkedin_copy', data.linkedin_copy);
-      setAiNote(`AI filled the whitepaper details from the PDF. Confidence: ${data.confidence}%. Extracted characters: ${data.extracted_characters}.`);
+      fillField('title', data.title || '');
+      fillField('category', data.category || 'Data and Insights');
+      fillField('summary', data.summary || '');
+      fillField('description', data.description || '');
+      fillField('seo_title', data.seo_title || '');
+      fillField('meta_description', data.meta_description || '');
+      fillField('linkedin_copy', data.linkedin_copy || '');
+      setAiNote(`AI filled the whitepaper details. Confidence: ${data.confidence || 0}%. Extracted characters: ${data.extracted_characters || 0}. Please review before saving.`);
     } catch (e) {
-      setAiNote('AI analysis failed. The file may be scanned/image-only or unreadable. You can still enter details manually.');
+      setAiNote('AI analysis failed. Please confirm the backend is running and the file is a readable PDF. Scanned/image-only PDFs may need manual entry.');
     } finally {
       setAiLoading(false);
     }
@@ -201,35 +225,311 @@ function AdminUpload({ token }) {
   async function submit(e){
     e.preventDefault();
     setMsg('');
+    setMsgType('notice');
+    const form = e.currentTarget;
+    const pdf = getSelectedPdf();
+    const title = valueOf(form, 'title');
+    const summary = valueOf(form, 'summary');
+    if(!pdf){ setMsgType('error'); setMsg('Please select the whitepaper PDF before saving.'); return; }
+    if(!title || !summary){ setMsgType('error'); setMsg('Please fill Title and Short Summary before saving.'); return; }
+    const fd=new FormData();
+    fd.append('whitepaper_pdf', pdf, pdf.name || 'whitepaper.pdf');
+    const poster = form.elements?.poster?.files?.[0];
+    if(poster) fd.append('poster', poster, poster.name || 'poster.png');
+    ['title','summary','description','category','seo_title','meta_description','status','launch_at','linkedin_copy'].forEach(name=>{
+      fd.append(name, form.elements?.[name]?.value || '');
+    });
     setLoading(true);
-    const fd=new FormData(e.currentTarget);
     try{
       const res=await apiPost('/api/admin/whitepapers',fd,token);
+      setMsgType('notice');
       setMsg(`Created whitepaper with status: ${res.status}`);
-      e.currentTarget.reset();
+      form.reset();
+      setSelectedPdf(null);
+      setPdfName('');
       setAiNote('');
-    }catch(e){
-      setMsg('Upload failed. Please check that a PDF is selected and required fields are filled.');
+    }catch(err){
+      let detail = err?.message || '';
+      try { const parsed = JSON.parse(detail); detail = parsed.detail || detail; } catch(_) {}
+      setMsgType('error');
+      setMsg(`Upload failed: ${detail || 'Please check the PDF and required fields.'}`);
     }finally{setLoading(false)}
   }
 
-  return <form ref={formRef} className="admin-card upload-form" onSubmit={submit}>
-    <div className="form-title"><UploadCloud/><div><h2>Upload whitepaper, poster and launch schedule</h2><p>Upload the PDF first. The local AI assistant reads the document and pre-fills title, category, summary, SEO metadata and LinkedIn copy.</p></div></div>
-    <div className="ai-fill-panel"><div><h3>AI Whitepaper Detail Fill</h3><p>Select a PDF and the system will extract text, infer the service line, create a summary, meta description and launch copy. You can edit everything before saving.</p></div><button type="button" className="secondary" disabled={aiLoading} onClick={()=>analyzeFile(formRef.current?.elements?.whitepaper_pdf?.files?.[0])}>{aiLoading?'Reading PDF...':'AI Fill Details'}</button></div>
-    {aiNote&&<p className="notice ai-note">{aiNote}</p>}
-    <div className="form-grid"><label className="field"><span>Title *</span><input name="title" required placeholder="Building an AI-Ready Data Foundation"/></label><label className="field"><span>Category</span><input name="category" defaultValue="Data and Insights"/></label><label className="field"><span>SEO Title</span><input name="seo_title" placeholder="Whitepaper title | Truflux Technologies"/></label><label className="field"><span>Meta Description</span><input name="meta_description" placeholder="Short SEO description"/></label><label className="field"><span>Status</span><select name="status" defaultValue="Draft"><option>Draft</option><option>Scheduled</option><option>Published</option></select></label><label className="field"><span>Launch Date / Time</span><input type="datetime-local" name="launch_at"/></label><label className="field"><span>Whitepaper PDF *</span><input name="whitepaper_pdf" type="file" accept="application/pdf" required onChange={e=>analyzeFile(e.target.files?.[0])}/></label><label className="field"><span>Poster / LinkedIn Creative</span><input name="poster" type="file" accept="image/*,.svg"/></label></div><label className="field"><span>Short Summary *</span><textarea name="summary" required placeholder="Short card summary"/></label><label className="field"><span>Long Description</span><textarea name="description" placeholder="Landing page description"/></label><label className="field"><span>LinkedIn Post Copy</span><textarea name="linkedin_copy" placeholder="Write the launch post. The system will add tracking link and hashtags."/></label><button className="primary" disabled={loading}>{loading?'Uploading...':'Save Whitepaper'}</button>{msg&&<p className="notice">{msg}</p>}</form>
+  return <form ref={formRef} className="admin-card upload-form ai-upload-redesign" onSubmit={submit}>
+    <div className="form-title compact-title">
+      <UploadCloud/>
+      <div><h2>Upload whitepaper, poster and launch schedule</h2><p>Create gated content, AI-assisted metadata, launch copy and scheduled publishing.</p></div>
+    </div>
+
+    <section className="upload-sequence-card">
+      <div className="sequence-header">
+        <div>
+          <span className="admin-kicker">Step 1</span>
+          <h3>Select whitepaper PDF</h3>
+        </div>
+        <div className="info-tooltip-wrap" tabIndex="0" aria-label="AI fill information">
+          <Info size={17}/>
+          <span className="info-tooltip">The AI Fill feature extracts readable PDF text, infers the service line, creates a summary, SEO description and LinkedIn launch copy. You can edit every field before saving.</span>
+        </div>
+      </div>
+      <div className="upload-file-panel">
+        <label className="field native-file-field">
+          <span>Whitepaper PDF *</span>
+          <input name="whitepaper_pdf" type="file" accept="application/pdf,.pdf" required onChange={setFileFromInput}/>
+        </label>
+        <div className="selected-file-card">
+          <UploadCloud size={24}/>
+          <div>
+            <strong>{pdfName || 'No PDF selected yet'}</strong>
+            <span>{selectedPdf ? 'PDF selected. You can now run AI Fill Details.' : 'Choose the PDF first. The AI Fill button will enable after selection.'}</span>
+          </div>
+        </div>
+      </div>
+      <div className="ai-action-row">
+        <button type="button" className="primary" disabled={aiLoading || !selectedPdf} onClick={analyzeSelectedFile}>{aiLoading?'Reading PDF...':'AI Fill Details'}</button>
+        <p>{selectedPdf ? 'Ready for AI detail extraction.' : 'Select a PDF to enable AI Fill Details.'}</p>
+      </div>
+      {aiNote&&<p className="notice ai-note">{aiNote}</p>}
+    </section>
+
+    <section className="upload-section-card">
+      <div className="section-mini-title"><span className="admin-kicker">Step 2</span><h3>Review generated details</h3></div>
+      <div className="form-grid upload-detail-grid">
+        <label className="field"><span>Title *</span><input name="title" required placeholder="Building an AI-Ready Data Foundation"/></label>
+        <label className="field"><span>Category</span><input name="category" defaultValue="Data and Insights"/></label>
+        <label className="field"><span>SEO Title</span><input name="seo_title" placeholder="Whitepaper title | Truflux Technologies"/></label>
+        <label className="field"><span>Meta Description</span><input name="meta_description" placeholder="Short SEO description"/></label>
+        <label className="field wide-field"><span>Short Summary *</span><textarea name="summary" required placeholder="Short card summary"/></label>
+        <label className="field wide-field"><span>Long Description</span><textarea name="description" placeholder="Landing page description"/></label>
+        <label className="field wide-field"><span>LinkedIn Post Copy</span><textarea name="linkedin_copy" placeholder="Write the launch post. The system will add tracking link and hashtags."/></label>
+      </div>
+    </section>
+
+    <section className="upload-section-card">
+      <div className="section-mini-title"><span className="admin-kicker">Step 3</span><h3>Poster and launch settings</h3></div>
+      <div className="form-grid upload-detail-grid">
+        <label className="field"><span>Poster / LinkedIn Creative</span><input name="poster" type="file" accept="image/*,.svg"/></label>
+        <label className="field"><span>Status</span><select name="status" defaultValue="Draft"><option>Draft</option><option>Scheduled</option><option>Published</option></select></label>
+        <label className="field"><span>Launch Date / Time</span><input type="datetime-local" name="launch_at"/></label>
+      </div>
+    </section>
+
+    <div className="save-bar"><button className="primary" disabled={loading}>{loading?'Uploading...':'Save Whitepaper'}</button>{msg&&<p className={msgType}>{msg}</p>}</div>
+  </form>
 }
-function AdminLibrary({ token }){const [items,setItems]=useState([]);async function load(){setItems(await apiGet('/api/admin/whitepapers',token))} useEffect(()=>{load().catch(console.error)},[token]);async function updateStatus(id,status){await apiPut(`/api/admin/whitepapers/${id}/status`,{status},token);await load()} return <div className="admin-card"><h2>Whitepaper Library</h2><table className="admin-table"><thead><tr><th>Title</th><th>Category</th><th>Status</th><th>Launch</th><th>Downloads</th><th>Action</th></tr></thead><tbody>{items.map(item=><tr key={item.id}><td>{item.title}</td><td>{item.category}</td><td><span className={`status ${item.status.toLowerCase()}`}>{item.status}</span></td><td>{item.launch_at||'-'}</td><td>{item.downloads}</td><td><select value={item.status} onChange={e=>updateStatus(item.id,e.target.value)}><option>Draft</option><option>Scheduled</option><option>Published</option></select></td></tr>)}</tbody></table></div>}
-function AdminLeads({ token }){const [leads,setLeads]=useState([]);useEffect(()=>{apiGet('/api/admin/leads',token).then(setLeads).catch(console.error)},[token]);const exportUrl=`${API_BASE}/api/admin/export/leads.csv`;function exportCsv(e){e.preventDefault();fetch(exportUrl,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.blob()).then(blob=>{const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='truflux_leads_export.csv';a.click();URL.revokeObjectURL(url);});} return <div className="admin-card"><div className="row-heading"><div><h2>Audience Leads</h2><p>Captured after whitepaper unlock.</p></div><a className="secondary link-button" href={exportUrl} onClick={exportCsv}>Export CSV</a></div><div className="lead-list">{leads.map(lead=><div className="lead-row" key={lead.id}><strong>{lead.name}</strong><span>{lead.email}</span><span>{lead.company||'-'}</span><span>{lead.designation||'-'}</span><small>{lead.whitepaper_title}</small><small>{lead.timeline} • {lead.industry||'Industry not set'}</small></div>)}{leads.length===0&&<p>No leads yet. Unlock a whitepaper from the public site to test the flow.</p>}</div></div>}
+function AdminLibrary({ token }){
+  const [items,setItems]=useState([]);
+  const [query,setQuery]=useState('');
+  const [editing,setEditing]=useState(null);
+  const [message,setMessage]=useState('');
+  async function load(){setItems(await apiGet('/api/admin/whitepapers',token))}
+  useEffect(()=>{load().catch(console.error)},[token]);
+  async function updateStatus(id,status){await apiPut(`/api/admin/whitepapers/${id}/status`,{status},token);await load()}
+  async function deleteWhitepaper(item){
+    const ok = window.confirm(`Delete ${item.whitepaper_number || 'this whitepaper'} - ${item.title}? This removes it from the library but keeps historical lead records.`);
+    if(!ok) return;
+    await apiDelete(`/api/admin/whitepapers/${item.id}`,token);
+    if(editing?.id===item.id) setEditing(null);
+    setMessage('Whitepaper deleted.');
+    await load();
+  }
+  function beginEdit(item){setEditing({...item}); setMessage('');}
+  function updateEdit(k,v){setEditing(prev=>({...prev,[k]:v}));}
+  async function saveEdit(e){
+    e.preventDefault();
+    if(!editing) return;
+    const form = e.currentTarget;
+    const fd = new FormData();
+    ['title','summary','description','category','seo_title','meta_description','status','launch_at','linkedin_copy'].forEach(name=>fd.append(name, form.elements?.[name]?.value || ''));
+    const pdf = form.elements?.whitepaper_pdf?.files?.[0];
+    const poster = form.elements?.poster?.files?.[0];
+    if(pdf) fd.append('whitepaper_pdf', pdf, pdf.name);
+    if(poster) fd.append('poster', poster, poster.name);
+    const headers = { Authorization: `Bearer ${token}` };
+    const res = await fetch(`${API_BASE}/api/admin/whitepapers/${editing.id}`, { method:'PUT', headers, body:fd });
+    if(!res.ok){ setMessage(`Update failed: ${await res.text()}`); return; }
+    setMessage('Whitepaper updated.');
+    setEditing(null);
+    await load();
+  }
+  const filtered = items.filter(item=>{
+    const q=query.trim().toLowerCase();
+    const hay=[item.whitepaper_number,item.title,item.category,item.status,item.summary,item.launch_at].join(' ').toLowerCase();
+    return !q || hay.includes(q);
+  });
+  return <div className="whitepaper-admin-v2">
+    <section className="admin-card library-hero-v2">
+      <div>
+        <span className="admin-kicker">Whitepaper library</span>
+        <h2>Manage gated content</h2>
+        <p>Search, edit, delete, publish or reschedule whitepapers. Each item has a running whitepaper number for tracking.</p>
+      </div>
+      <label className="library-search-v2"><span>Search whitepapers</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search by number, title, category, status..."/></label>
+    </section>
+    {message&&<p className={message.toLowerCase().includes('failed')?'error':'notice'}>{message}</p>}
+    <section className="admin-card library-list-v2">
+      <div className="library-list-head"><strong>{filtered.length}</strong><span>shown from {items.length} whitepapers</span></div>
+      <div className="whitepaper-manage-list">
+        {filtered.map(item=><article className="whitepaper-manage-card" key={item.id}>
+          <div className="wp-number-badge">{item.whitepaper_number || 'WP-0000'}</div>
+          <div className="wp-manage-main"><h3>{item.title}</h3><p>{item.summary}</p><div className="wp-meta-row"><span>{item.category || 'Uncategorised'}</span><span>Launch: {item.launch_at || 'Not scheduled'}</span><span>Downloads: {item.downloads || 0}</span></div></div>
+          <div className="wp-manage-actions">
+            <span className={`status ${String(item.status||'draft').toLowerCase()}`}>{item.status}</span>
+            <select value={item.status} onChange={e=>updateStatus(item.id,e.target.value)}><option>Draft</option><option>Scheduled</option><option>Published</option></select>
+            <button className="secondary small" onClick={()=>beginEdit(item)}><Pencil size={14}/> Edit / Reschedule</button>
+            <button className="secondary small danger" onClick={()=>deleteWhitepaper(item)}><Trash2 size={14}/> Delete</button>
+          </div>
+        </article>)}
+        {filtered.length===0&&<div className="empty-state-v2"><h3>No matching whitepapers</h3><p>Clear the search or upload a new whitepaper.</p></div>}
+      </div>
+    </section>
+    {editing&&<div className="modal-backdrop"><div className="lead-modal edit-whitepaper-modal"><button className="close" onClick={()=>setEditing(null)}>×</button><div className="modal-title"><span className="category">{editing.whitepaper_number}</span><h2>Edit whitepaper</h2><p>Update content, replace files, change status, or reschedule the launch date.</p></div><form onSubmit={saveEdit} className="lead-form"><div className="form-grid upload-detail-grid">
+      <label className="field"><span>Title *</span><input name="title" value={editing.title||''} onChange={e=>updateEdit('title',e.target.value)} required/></label>
+      <label className="field"><span>Category</span><input name="category" value={editing.category||''} onChange={e=>updateEdit('category',e.target.value)}/></label>
+      <label className="field"><span>SEO Title</span><input name="seo_title" value={editing.seo_title||''} onChange={e=>updateEdit('seo_title',e.target.value)}/></label>
+      <label className="field"><span>Meta Description</span><input name="meta_description" value={editing.meta_description||''} onChange={e=>updateEdit('meta_description',e.target.value)}/></label>
+      <label className="field"><span>Status</span><select name="status" value={editing.status||'Draft'} onChange={e=>updateEdit('status',e.target.value)}><option>Draft</option><option>Scheduled</option><option>Published</option></select></label>
+      <label className="field"><span>Launch Date / Time</span><input type="datetime-local" name="launch_at" value={(editing.launch_at||'').slice(0,16)} onChange={e=>updateEdit('launch_at',e.target.value)}/></label>
+      <label className="field"><span>Replace PDF</span><input name="whitepaper_pdf" type="file" accept="application/pdf,.pdf"/></label>
+      <label className="field"><span>Replace Poster</span><input name="poster" type="file" accept="image/*,.svg"/></label>
+      <label className="field wide-field"><span>Short Summary *</span><textarea name="summary" value={editing.summary||''} onChange={e=>updateEdit('summary',e.target.value)} required/></label>
+      <label className="field wide-field"><span>Long Description</span><textarea name="description" value={editing.description||''} onChange={e=>updateEdit('description',e.target.value)}/></label>
+      <label className="field wide-field"><span>LinkedIn Post Copy</span><textarea name="linkedin_copy" value={editing.linkedin_copy||''} onChange={e=>updateEdit('linkedin_copy',e.target.value)}/></label>
+    </div><div className="save-bar"><button className="primary"><Save size={16}/> Save Changes</button><button type="button" className="secondary" onClick={()=>setEditing(null)}><RotateCcw size={16}/> Cancel</button></div></form></div></div>}
+  </div>
+}
+function AdminLeads({ token }){
+  const [leads,setLeads]=useState([]);
+  const [query,setQuery]=useState('');
+  const [timeline,setTimeline]=useState('All');
+  const [selectedId,setSelectedId]=useState(null);
+  useEffect(()=>{apiGet('/api/admin/leads',token).then(data=>{setLeads(data); if(data.length) setSelectedId(data[0].id);}).catch(console.error)},[token]);
+  const exportUrl=`${API_BASE}/api/admin/export/leads.csv`;
+  function exportCsv(e){e.preventDefault();fetch(exportUrl,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.blob()).then(blob=>{const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='truflux_leads_export.csv';a.click();URL.revokeObjectURL(url);});}
+  const timelines=['All',...Array.from(new Set(leads.map(l=>l.timeline).filter(Boolean)))];
+  const filtered=leads.filter(lead=>{
+    const q=query.trim().toLowerCase();
+    const hay=[lead.name,lead.email,lead.company,lead.designation,lead.industry,lead.location,lead.whitepaper_title,lead.interest_area].join(' ').toLowerCase();
+    return (!q || hay.includes(q)) && (timeline==='All' || lead.timeline===timeline);
+  });
+  const selected=filtered.find(l=>l.id===selectedId)||filtered[0]||null;
+  const companyCount=new Set(leads.map(l=>(l.company||'').trim()).filter(Boolean)).size;
+  const newsletterCount=leads.filter(l=>Number(l.newsletter)===1).length;
+  const highIntent=leads.filter(l=>String(l.timeline||'').toLowerCase().includes('immediate')||String(l.timeline||'').includes('3')).length;
+  const latest=leads[0]?.created_at ? new Date(leads[0].created_at).toLocaleDateString() : '-';
+  function initials(name){return String(name||'Lead').split(' ').filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase()||'L'}
+  return <div className="leads-page-v2">
+    <div className="leads-hero-card">
+      <div>
+        <span className="admin-kicker">Whitepaper audience</span>
+        <h2>Leads</h2>
+        <p>Clean view of people who unlocked whitepapers. Search, qualify and export without crowding the page.</p>
+      </div>
+      <a className="primary link-button" href={exportUrl} onClick={exportCsv}><Download size={16}/> Export CSV</a>
+    </div>
+    <div className="lead-metrics-v2">
+      <Metric title="Total leads" value={leads.length}/>
+      <Metric title="Companies" value={companyCount}/>
+      <Metric title="High intent" value={highIntent}/>
+      <Metric title="Newsletter" value={newsletterCount}/>
+    </div>
+    <div className="lead-workspace-v2">
+      <section className="admin-card lead-directory-v2">
+        <div className="lead-toolbar-v2">
+          <label className="lead-search-v2"><span>Search leads</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Name, company, email, whitepaper..."/></label>
+          <label className="lead-filter-v2"><span>Timeline</span><select value={timeline} onChange={e=>setTimeline(e.target.value)}>{timelines.map(t=><option key={t}>{t}</option>)}</select></label>
+        </div>
+        <div className="lead-summary-line"><strong>{filtered.length}</strong> shown from <strong>{leads.length}</strong> leads <span>Latest: {latest}</span></div>
+        <div className="lead-card-list-v2">
+          {filtered.map(lead=><button type="button" className={`lead-card-v2 ${selected?.id===lead.id?'selected':''}`} key={lead.id} onClick={()=>setSelectedId(lead.id)}>
+            <span className="lead-avatar-v2">{initials(lead.name)}</span>
+            <span className="lead-main-v2"><strong>{lead.name}</strong><small>{lead.designation||'Designation not set'} {lead.company?`• ${lead.company}`:''}</small><em>{lead.whitepaper_title||'Whitepaper not set'}</em></span>
+            <span className="lead-meta-v2"><small>{lead.timeline||'Timeline not set'}</small><b>{lead.industry||'Industry not set'}</b></span>
+          </button>)}
+          {filtered.length===0&&<div className="empty-state-v2"><h3>No matching leads</h3><p>Try clearing the search or timeline filter.</p></div>}
+          {leads.length===0&&<div className="empty-state-v2"><h3>No leads yet</h3><p>Unlock a whitepaper from the public site to test the capture flow.</p></div>}
+        </div>
+      </section>
+      <aside className="admin-card lead-detail-v2">
+        <div className="detail-top-v2"><span className="lead-avatar-v2 large">{initials(selected?.name)}</span><div><h2>{selected?.name||'Select a lead'}</h2><p>{selected?.designation||'Designation not set'}{selected?.company?` at ${selected.company}`:''}</p></div></div>
+        {selected?<>
+          <div className="detail-grid-v2">
+            <p><strong>Email</strong><span>{selected.email}</span></p>
+            <p><strong>Mobile</strong><span>{selected.mobile||'-'}</span></p>
+            <p><strong>Company</strong><span>{selected.company||'-'}</span></p>
+            <p><strong>Industry</strong><span>{selected.industry||'-'}</span></p>
+            <p><strong>Location</strong><span>{selected.location||'-'}</span></p>
+            <p><strong>Timeline</strong><span>{selected.timeline||'-'}</span></p>
+            <p><strong>Interest</strong><span>{selected.interest_area||'-'}</span></p>
+            <p><strong>Newsletter</strong><span>{Number(selected.newsletter)===1?'Yes':'No'}</span></p>
+          </div>
+          <div className="detail-note-v2"><strong>Whitepaper</strong><p>{selected.whitepaper_title||'-'}</p></div>
+          <div className="detail-note-v2"><strong>Business challenge</strong><p>{selected.business_challenge||'Not provided'}</p></div>
+          {selected.linkedin_profile&&<a className="secondary link-button small" href={selected.linkedin_profile} target="_blank" rel="noreferrer">Open LinkedIn Profile</a>}
+        </>:<p>Select a lead from the left to view full details.</p>}
+      </aside>
+    </div>
+  </div>
+}
 function AdminContacts({ token }){const [contacts,setContacts]=useState([]);useEffect(()=>{apiGet('/api/admin/contacts',token).then(setContacts).catch(console.error)},[token]);return <div className="admin-card"><div className="row-heading"><div><h2>Contact Enquiries</h2><p>Captured from the public contact dialog.</p></div></div><div className="lead-list">{contacts.map(c=><div className="lead-row" key={c.id}><strong>{c.name}</strong><span>{c.email}</span><span>{c.company||'-'}</span><span>{c.interest_area||'-'}</span><small>{c.mobile||'Mobile not set'} • {c.designation||'Designation not set'}</small><small>{c.message||'No message'}</small></div>)}{contacts.length===0&&<p>No contact enquiries yet. Submit the public contact dialog to test the flow.</p>}</div></div>}
 function AdminLinkedIn({ token }){const [items,setItems]=useState([]);const [selectedPost,setSelectedPost]=useState(null);const [notice,setNotice]=useState('');async function load(){setItems(await apiGet('/api/admin/launches',token))} useEffect(()=>{load().catch(console.error)},[token]);async function generate(id){setSelectedPost(await apiGet(`/api/admin/linkedin/post/${id}`,token))} async function processDue(){const res=await apiPost('/api/admin/launches/process-due',{},token);setNotice(`Processed due launches. Published count: ${res.published_count}`);await load()} async function copyText(text){await navigator.clipboard.writeText(text);setNotice('Copied LinkedIn post text to clipboard.')} return <div className="linkedin-layout"><div className="admin-card"><div className="row-heading"><div><h2>Launch & LinkedIn Queue</h2><p>Generate LinkedIn-ready posts with UTM tracking links.</p></div><button className="primary small" onClick={processDue}><CalendarClock size={16}/> Process Due Launches</button></div>{notice&&<p className="notice">{notice}</p>}<table className="admin-table"><thead><tr><th>Title</th><th>Status</th><th>Launch</th><th>LinkedIn</th></tr></thead><tbody>{items.map(item=><tr key={item.id}><td>{item.title}</td><td><span className={`status ${item.status.toLowerCase()}`}>{item.status}</span></td><td>{item.launch_at||'-'}</td><td><button className="secondary tiny" onClick={()=>generate(item.id)}>Generate</button></td></tr>)}</tbody></table></div><div className="admin-card linkedin-preview"><h2>LinkedIn Post Preview</h2>{selectedPost?<>{selectedPost.poster_url&&<img src={selectedPost.poster_url} alt="LinkedIn poster"/>}<textarea readOnly value={selectedPost.post_text}/><div className="hero-actions"><button className="primary small" onClick={()=>copyText(selectedPost.post_text)}>Copy Post</button><a className="secondary link-button small" href={selectedPost.tracking_url} target="_blank" rel="noreferrer">Open Tracking Link</a></div></>:<p>Select a whitepaper and click Generate. This first build prepares the post and tracking link for manual LinkedIn publishing.</p>}</div></div>}
+
+function AdminJobs({ token }){
+  const [data,setData]=useState({jobs:[],scheduled_whitepapers:[],recent_runs:[]});
+  const [notice,setNotice]=useState('');
+  const [loading,setLoading]=useState('');
+  async function load(){setData(await apiGet('/api/admin/jobs',token));}
+  useEffect(()=>{load().catch(console.error)},[token]);
+  async function run(jobType){
+    setLoading(jobType); setNotice('');
+    try{
+      const res=await apiPost('/api/admin/jobs/run',{job_type:jobType},token);
+      const msg=res.message || 'Job completed';
+      const extra = res.published_count!==undefined ? ` Published: ${res.published_count}.` : (res.created_count!==undefined ? ` Leads created: ${res.created_count}.` : '');
+      setNotice(`${msg}.${extra}`);
+      await load();
+    }catch(e){
+      setNotice(e.message || 'Job failed. Please check backend logs.');
+    }finally{setLoading('');}
+  }
+  return <div className="jobs-layout">
+    <section className="admin-card jobs-hero-card">
+      <div className="row-heading"><div><h2>Job Schedule</h2><p>Run scheduled whitepaper launches and approved-source lead jobs from one place.</p></div><button className="secondary small" onClick={load}>Refresh</button></div>
+      {notice&&<p className="notice">{notice}</p>}
+      <div className="job-grid">
+        {data.jobs.map(job=><div className="job-card" key={job.job_type}>
+          <div className="job-card-top"><span className={`status ${String(job.status||'ready').toLowerCase()}`}>{job.status}</span><CalendarClock size={20}/></div>
+          <h3>{job.job_name}</h3>
+          <p>{job.description}</p>
+          <div className="job-meta"><span>{job.schedule}</span><span>{job.due_count ? `${job.due_count} due` : 'No due items'}</span></div>
+          <button className="primary small" onClick={()=>run(job.job_type)} disabled={loading===job.job_type}>{loading===job.job_type?'Running...':'Run Now'}</button>
+        </div>)}
+      </div>
+      <p className="job-compliance-note"><Info size={15}/> LinkedIn-related jobs are designed for approved imports, CRM sync, Sales Navigator assisted review, and consented data sources. This build does not automate LinkedIn scraping.</p>
+    </section>
+
+    <section className="admin-card">
+      <div className="row-heading"><div><h2>Scheduled Whitepapers</h2><p>Whitepapers waiting for launch processing.</p></div></div>
+      <table className="admin-table"><thead><tr><th>No.</th><th>Title</th><th>Status</th><th>Launch Date</th></tr></thead><tbody>{data.scheduled_whitepapers.map(wp=><tr key={wp.id}><td>{wp.whitepaper_number}</td><td>{wp.title}</td><td><span className={`status ${wp.status.toLowerCase()}`}>{wp.status}</span></td><td>{wp.launch_at || '-'}</td></tr>)}{data.scheduled_whitepapers.length===0&&<tr><td colSpan="4">No scheduled whitepapers pending.</td></tr>}</tbody></table>
+    </section>
+
+    <section className="admin-card">
+      <div className="row-heading"><div><h2>Recent Job Runs</h2><p>Execution history for launch and lead-generation jobs.</p></div></div>
+      <table className="admin-table"><thead><tr><th>Time</th><th>Job</th><th>Status</th><th>Result</th></tr></thead><tbody>{data.recent_runs.map(run=><tr key={run.id}><td>{run.created_at}</td><td>{run.job_name}</td><td><span className={`status ${run.status.toLowerCase()}`}>{run.status}</span></td><td><small>{run.result}</small></td></tr>)}{data.recent_runs.length===0&&<tr><td colSpan="4">No jobs have been run yet.</td></tr>}</tbody></table>
+    </section>
+  </div>
+}
+
+function InfoTip({ text }){
+  return <span className="info-tooltip-wrap inline-info" tabIndex="0" aria-label="Information"><Info size={15}/><span className="info-tooltip">{text}</span></span>
+}
 
 function AdminLeadAgent({ token }){
   const [sourceText,setSourceText]=useState('');
   const [query,setQuery]=useState('Identify CIOs and technology decision owners at companies announcing new projects, new roles, data, AI, platform and transformation initiatives');
   const [mode,setMode]=useState('cio');
   const [sourcePlan,setSourcePlan]=useState([]);
-  const [salesPlan,setSalesPlan]=useState(null);
   const [salesNavText,setSalesNavText]=useState('');
   const [salesNavName,setSalesNavName]=useState('CIO / Technology Decision Makers');
   const [salesNavUrl,setSalesNavUrl]=useState('');
@@ -238,52 +538,64 @@ function AdminLeadAgent({ token }){
   const [notice,setNotice]=useState('');
   const [loading,setLoading]=useState(false);
   async function load(){setProspects(await apiGet('/api/admin/prospect-leads',token));}
-  useEffect(()=>{load().catch(console.error);apiGet('/api/admin/lead-agent/source-plan',token).then(r=>setSourcePlan(r.sources||[])).catch(()=>{});apiGet('/api/admin/sales-navigator/playbook',token).then(r=>setSalesPlan(r)).catch(()=>{})},[token]);
-  function parseSources(){
-    return sourceText.split('\n---\n').map(block=>block.trim()).filter(Boolean).map(block=>{
-      const lines=block.split('\n');
-      const first=lines[0]||'';
-      const isUrl=first.startsWith('http');
-      return {platform:'Manual LinkedIn / Social Import', url:isUrl?first:'', text:isUrl?lines.slice(1).join('\n'):block};
-    });
-  }
-  async function runAgent(runMode=mode, useDemo=false){
-    setLoading(true); setNotice('');
-    try{
-      const sources = useDemo ? [] : parseSources();
-      const res=await apiPost('/api/admin/lead-agent/run',{query,sources,mode:runMode},token);
-      setMode(runMode);
-      setNotice(`${runMode==='cio'?'CIO discovery':'Lead agent'} completed. Sources checked: ${res.source_count}. New lead records created: ${res.created_count}.`);
-      await load();
-    }catch(e){setNotice('Lead agent run failed. Please check backend logs.');}
-    finally{setLoading(false);}
-  }
-  async function importSalesNavigator(){
-    setLoading(true); setNotice('');
-    try{
-      const res=await apiPost('/api/admin/sales-navigator/import',{saved_search_name:salesNavName,saved_search_url:salesNavUrl,pasted_records:salesNavText,notes:'Imported from Admin Lead Agent Sales Navigator panel'},token);
-      setNotice(`Sales Navigator import completed. Records read: ${res.pasted_count}. New lead records created: ${res.created_count}.`);
-      setSalesNavText('');
-      await load();
-    }catch(e){setNotice('Sales Navigator import failed. Please check the pasted data and backend logs.');}
-    finally{setLoading(false);}
-  }
+  useEffect(()=>{load().catch(console.error);apiGet('/api/admin/lead-agent/source-plan',token).then(r=>setSourcePlan(r.sources||[])).catch(()=>{})},[token]);
+  function parseSources(){return sourceText.split('\n---\n').map(block=>block.trim()).filter(Boolean).map(block=>{const lines=block.split('\n');const first=lines[0]||'';const isUrl=first.startsWith('http');return {platform:'Manual LinkedIn / Social Import', url:isUrl?first:'', text:isUrl?lines.slice(1).join('\n'):block};});}
+  async function runAgent(runMode=mode, useDemo=false){setLoading(true); setNotice('');try{const sources = useDemo ? [] : parseSources();const res=await apiPost('/api/admin/lead-agent/run',{query,sources,mode:runMode},token);setMode(runMode);setNotice(`${runMode==='cio'?'CIO discovery':'Lead agent'} completed. Sources checked: ${res.source_count}. New lead records created: ${res.created_count}.`);await load();}catch(e){setNotice('Lead agent run failed. Please check backend logs.');}finally{setLoading(false);}}
+  async function importSalesNavigator(){setLoading(true); setNotice('');try{const res=await apiPost('/api/admin/sales-navigator/import',{saved_search_name:salesNavName,saved_search_url:salesNavUrl,pasted_records:salesNavText,notes:'Imported from Admin Lead Agent Sales Navigator panel'},token);setNotice(`Sales Navigator import completed. Records read: ${res.pasted_count}. New lead records created: ${res.created_count}.`);setSalesNavText('');await load();}catch(e){setNotice('Sales Navigator import failed. Please check the pasted data and backend logs.');}finally{setLoading(false);}}
   async function updateStatus(id,status){await apiPut(`/api/admin/prospect-leads/${id}/status`,{status},token);await load();}
   async function copyEmail(lead){await navigator.clipboard.writeText(`Subject: ${lead.email_subject}\n\n${lead.email_body}`);setNotice('Introductory email copied to clipboard.');}
   const exportUrl=`${API_BASE}/api/admin/export/prospect-leads.csv`;
-  return <div className="lead-agent-layout">
-    <div className="admin-card lead-agent-runner">
-      <div className="form-title"><SearchCheck/><div><h2>CIO Lead Generation Agent</h2><p>Identify CIOs and CIO-equivalent technology decision owners from approved/imported LinkedIn, social, newsroom, RSS, CRM and event sources. The records are stored as prospect leads with appointment emails.</p></div></div>
-      <div className="mode-grid"><label className={`mode-card ${mode==='cio'?'active':''}`}><input type="radio" checked={mode==='cio'} onChange={()=>setMode('cio')}/><strong>CIO Discovery</strong><span>Prioritise CIO, Chief Digital Officer, CTO and Head of IT contacts.</span></label><label className={`mode-card ${mode==='general'?'active':''}`}><input type="radio" checked={mode==='general'} onChange={()=>setMode('general')}/><strong>General Signals</strong><span>Find project, role, expansion and innovation leads.</span></label></div>
-      <label className="field"><span>Search focus</span><input value={query} onChange={e=>setQuery(e.target.value)} /></label>
-      <label className="field"><span>Approved source posts / snippets / company updates</span><textarea className="agent-source-box" value={sourceText} onChange={e=>setSourceText(e.target.value)} placeholder={'Paste LinkedIn/social/news/company snippets here. Separate each source with a line containing ---\n\nExample:\nArjun Rao has joined Meridian Consumer Products as Chief Information Officer to lead ERP modernization, data platform and AI-enabled operations.\n---\nSouthBay Hospitals announced a new digital patient experience platform and appointed Meera Iyer as CIO.'}/></label>
-      <div className="hero-actions"><button className="primary" onClick={()=>runAgent(mode,false)} disabled={loading}>{loading?'Running Agent...':mode==='cio'?'Find CIO Leads':'Run Lead Agent'}</button><button className="secondary" onClick={()=>{setSourceText('');runAgent('cio',true);}}>Run CIO Demo Scan</button><button className="secondary" onClick={()=>{setSourceText('');runAgent('general',true);}}>Run General Demo</button><a className="secondary link-button" href={exportUrl} target="_blank" rel="noreferrer">Export Prospects CSV</a></div>
-      {notice&&<p className="notice">{notice}</p>}
-      <div className="source-plan"><strong>Source coverage for production</strong><div>{sourcePlan.map(src=><span key={src}>{src}</span>)}</div></div>
-      <div className="agent-note"><strong>Compliance note:</strong> This local build creates the agent workflow and database. Production monitoring should use Sales Navigator assisted workflows, approved CRM Sync/SNAP permissions where available, RSS/news feeds, company pages, CRM/event imports, and consented data sources. It should not scrape LinkedIn or bypass platform terms.</div>
+  return <div className="lead-agent-layout spacious deexplained-agent">
+    <div className="admin-card lead-agent-runner spacious-runner">
+      <div className="lead-agent-header compact-agent-header">
+        <div className="lead-agent-icon"><SearchCheck size={26}/></div>
+        <div><h2>CIO Lead Generation Agent <InfoTip text="Creates prospect leads from approved/manual/API-imported sources. It identifies CIO and CIO-equivalent roles, records source signals, and prepares an appointment email."/></h2></div>
+      </div>
+
+      <section className="agent-section">
+        <div className="agent-section-title compact-tooltip-title"><span>01</span><div><strong>Select search mode <InfoTip text="CIO Discovery prioritises technology decision makers. General Signals finds broader project, role, expansion and innovation opportunities."/></strong></div></div>
+        <div className="mode-grid spacious-mode"><label className={`mode-card ${mode==='cio'?'active':''}`}><input type="radio" checked={mode==='cio'} onChange={()=>setMode('cio')}/><strong>CIO Discovery</strong><span>CIO, CDO, CTO and Head of IT contacts.</span></label><label className={`mode-card ${mode==='general'?'active':''}`}><input type="radio" checked={mode==='general'} onChange={()=>setMode('general')}/><strong>General Signals</strong><span>Project, role, expansion and innovation leads.</span></label></div>
+      </section>
+
+      <section className="agent-section">
+        <div className="agent-section-title compact-tooltip-title"><span>02</span><div><strong>Search focus <InfoTip text="Describe target companies, industries, titles, geography, initiative types, and project signals for the agent to prioritise."/></strong></div></div>
+        <label className="field agent-field-block"><span>Search focus</span><input value={query} onChange={e=>setQuery(e.target.value)} /></label>
+      </section>
+
+      <section className="agent-section">
+        <div className="agent-section-title compact-tooltip-title"><span>03</span><div><strong>Approved source posts / snippets / company updates <InfoTip text="Paste permitted LinkedIn Sales Navigator notes, social snippets, newsroom updates, RSS items or CRM imports. Separate each source with a line containing three dashes."/></strong></div></div>
+        <label className="field agent-field-block"><span>Source text</span><textarea className="agent-source-box" value={sourceText} onChange={e=>setSourceText(e.target.value)} placeholder={`Paste LinkedIn/social/news/company snippets here. Separate each source with a line containing ---
+
+Example:
+Arjun Rao has joined Meridian Consumer Products as Chief Information Officer to lead ERP modernization, data platform and AI-enabled operations.
+---
+SouthBay Hospitals announced a new digital patient experience platform and appointed Meera Iyer as CIO.`}/></label>
+      </section>
+
+      <section className="agent-section sales-nav-section">
+        <div className="agent-section-title compact-tooltip-title"><span>04</span><div><strong>LinkedIn Sales Navigator assisted import <InfoTip text="Paste Sales Navigator lead cards or CRM-synced rows. This is an assisted workflow and does not scrape LinkedIn."/></strong></div></div>
+        <div className="form-grid upload-detail-grid">
+          <label className="field"><span>Saved search / lead list name</span><input value={salesNavName} onChange={e=>setSalesNavName(e.target.value)}/></label>
+          <label className="field"><span>Sales Navigator / CRM Sync URL</span><input value={salesNavUrl} onChange={e=>setSalesNavUrl(e.target.value)} placeholder="Optional reference URL"/></label>
+          <label className="field wide-field"><span>Sales Navigator rows</span><textarea value={salesNavText} onChange={e=>setSalesNavText(e.target.value)} placeholder={`Example:
+Meera Iyer, CIO, SouthBay Hospitals, Bengaluru, https://linkedin.com/in/example
+Arjun Rao, Chief Information Officer, Meridian Consumer Products, Bengaluru, https://linkedin.com/in/example`}/></label>
+        </div>
+        <button className="secondary" type="button" disabled={loading || !salesNavText.trim()} onClick={importSalesNavigator}>Import Sales Navigator Leads</button>
+      </section>
+
+      <section className="agent-section agent-actions-section">
+        <div className="agent-section-title compact-tooltip-title"><span>05</span><div><strong>Run and export <InfoTip text="Run the agent on pasted sources or demo data. Export the resulting prospect database as CSV for follow-up."/></strong></div></div>
+        <div className="hero-actions agent-action-row"><button className="primary" onClick={()=>runAgent(mode,false)} disabled={loading}>{loading?'Running Agent...':mode==='cio'?'Find CIO Leads':'Run Lead Agent'}</button><button className="secondary" onClick={()=>{setSourceText('');runAgent('cio',true);}}>Run CIO Demo Scan</button><button className="secondary" onClick={()=>{setSourceText('');runAgent('general',true);}}>Run General Demo</button><a className="secondary link-button" href={exportUrl} target="_blank" rel="noreferrer">Export Prospects CSV</a></div>
+        {notice&&<p className="notice">{notice}</p>}
+      </section>
+
+      <section className="agent-section agent-reference-section compact-reference">
+        <div className="source-plan"><strong>Source coverage <InfoTip text="Production integrations should use approved sources such as Sales Navigator assisted import, CRM sync, company pages, news feeds, RSS, event lists and consented datasets."/></strong><div>{sourcePlan.map(src=><span key={src}>{src}</span>)}</div></div>
+      </section>
     </div>
     <div className="admin-card prospect-list-card">
-      <div className="row-heading"><div><h2>Prospect Lead Records</h2><p>Each record includes source signal, CIO/CIO-equivalent point of contact, recommended action and appointment email.</p></div></div>
+      <div className="row-heading"><div><h2>Prospect Lead Records</h2></div></div>
       <div className="prospect-list">{prospects.map(lead=><div className={`prospect-row ${selected?.id===lead.id?'selected':''}`} key={lead.id} onClick={()=>setSelected(lead)}><div><strong>{lead.organization}</strong><span>{lead.signal_type} • {lead.project}</span></div><div><small>{lead.contact_role}</small><b>{lead.confidence}%</b></div></div>)}{prospects.length===0&&<p>No prospect records yet. Run the demo scan or paste source snippets.</p>}</div>
     </div>
     <div className="admin-card prospect-detail-card">
