@@ -14,15 +14,17 @@ DB_PATH = BASE_DIR / "truflux_demo.db"
 STORAGE = BASE_DIR / "storage"
 UPLOADS = STORAGE / "uploads"
 POSTERS = STORAGE / "posters"
+TRAILERS = STORAGE / "trailers"
 UPLOADS.mkdir(parents=True, exist_ok=True)
 POSTERS.mkdir(parents=True, exist_ok=True)
+TRAILERS.mkdir(parents=True, exist_ok=True)
 
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "truflux@123")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "demo-admin-token-change-before-production")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://127.0.0.1:5173")
 
-app = FastAPI(title="Truflux Website First Build API", version="1.0.24")
+app = FastAPI(title="Truflux Website First Build API", version="1.0.25")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "http://127.0.0.1:3000"],
@@ -107,7 +109,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS whitepapers (
             id TEXT PRIMARY KEY, title TEXT NOT NULL, summary TEXT NOT NULL, description TEXT,
             category TEXT, seo_title TEXT, meta_description TEXT, status TEXT DEFAULT 'Draft',
-            launch_at TEXT, created_at TEXT, updated_at TEXT, pdf_path TEXT, poster_path TEXT,
+            launch_at TEXT, created_at TEXT, updated_at TEXT, pdf_path TEXT, poster_path TEXT, trailer_path TEXT,
             linkedin_copy TEXT, downloads INTEGER DEFAULT 0,
             whitepaper_no INTEGER
         )
@@ -115,6 +117,10 @@ def init_db():
     # Migration for older local databases created before running numbers were added.
     try:
         cur.execute("ALTER TABLE whitepapers ADD COLUMN whitepaper_no INTEGER")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cur.execute("ALTER TABLE whitepapers ADD COLUMN trailer_path TEXT")
     except sqlite3.OperationalError:
         pass
     existing_without_no = cur.execute("SELECT id FROM whitepapers WHERE whitepaper_no IS NULL ORDER BY created_at ASC").fetchall()
@@ -260,9 +266,9 @@ def seed_demo_content():
         poster_svg(poster, title, summary[:85])
         cur.execute("""
             INSERT INTO whitepapers
-            (id, title, summary, description, category, seo_title, meta_description, status, launch_at, created_at, updated_at, pdf_path, poster_path, linkedin_copy, downloads, whitepaper_no)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'Published', ?, ?, ?, ?, ?, ?, 0, ?)
-        """, (wp_id, title, summary, desc, category, title + " | Truflux Technologies", summary, now_iso(), now_iso(), now_iso(), str(pdf.relative_to(STORAGE)), str(poster.relative_to(STORAGE)), linkedin, idx))
+            (id, title, summary, description, category, seo_title, meta_description, status, launch_at, created_at, updated_at, pdf_path, poster_path, trailer_path, linkedin_copy, downloads, whitepaper_no)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'Published', ?, ?, ?, ?, ?, ?, ?, 0, ?)
+        """, (wp_id, title, summary, desc, category, title + " | Truflux Technologies", summary, now_iso(), now_iso(), now_iso(), str(pdf.relative_to(STORAGE)), str(poster.relative_to(STORAGE)), "", linkedin, idx))
     conn.commit(); conn.close()
 
 class LoginRequest(BaseModel):
@@ -351,7 +357,7 @@ async def admin_and_access_logger(request: Request, call_next):
     return response
 
 @app.get("/api/health")
-def health(): return {"status":"ok", "service":"Truflux Website First Build API", "version":"1.0.24"}
+def health(): return {"status":"ok", "service":"Truflux Website First Build API", "version":"1.0.25"}
 
 @app.post("/api/admin/login")
 def admin_login(payload: LoginRequest, request: Request):
@@ -364,7 +370,7 @@ def admin_login(payload: LoginRequest, request: Request):
 
 @app.get("/api/settings")
 def public_settings():
-    return {"brand":"Truflux Technologies", "tagline":"Strategy-led. Data-driven. AI-enabled. Outcome-focused.", "primary_color":"#0B0835", "accent_color":"#0878F8", "version":"1.0.24"}
+    return {"brand":"Truflux Technologies", "tagline":"Strategy-led. Data-driven. AI-enabled. Outcome-focused.", "primary_color":"#0B0835", "accent_color":"#0878F8", "version":"1.0.25"}
 
 @app.get("/api/whitepapers")
 def list_public_whitepapers():
@@ -382,6 +388,9 @@ def list_admin_whitepapers(authorization: Optional[str] = Header(None)):
     return [with_whitepaper_display_fields(row_to_dict(r)) for r in rows]
 
 
+
+def is_allowed_trailer(filename: str) -> bool:
+    return bool(filename) and filename.lower().endswith((".mp4", ".webm", ".mov", ".m4v"))
 
 def extract_pdf_text_for_ai(pdf_file: UploadFile) -> str:
     """Extract text from an uploaded PDF for local AI-style metadata generation.
@@ -466,7 +475,11 @@ def with_whitepaper_display_fields(d: dict) -> dict:
     no = d.get("whitepaper_no") or 0
     d["whitepaper_number"] = f"WP-{int(no):04d}" if no else "WP-0000"
     if d.get("poster_path"):
-        d["poster_url"] = f"http://127.0.0.1:8000/uploads/{d['poster_path']}"
+        d["poster_url"] = f"/uploads/{d['poster_path']}"
+    if d.get("trailer_path"):
+        d["trailer_url"] = f"/uploads/{d['trailer_path']}"
+    if d.get("pdf_path"):
+        d["pdf_url"] = f"/uploads/{d['pdf_path']}"
     return d
 
 def next_whitepaper_no(conn) -> int:
@@ -496,7 +509,7 @@ def analyze_whitepaper(authorization: Optional[str] = Header(None), whitepaper_p
 def create_whitepaper(
     authorization: Optional[str] = Header(None), title: str = Form(""), summary: str = Form(""), description: str = Form(""),
     category: str = Form("Insights"), seo_title: str = Form(""), meta_description: str = Form(""), status: str = Form("Draft"),
-    launch_at: str = Form(""), linkedin_copy: str = Form(""), whitepaper_pdf: Optional[UploadFile] = File(None), poster: Optional[UploadFile] = File(None),
+    launch_at: str = Form(""), linkedin_copy: str = Form(""), whitepaper_pdf: Optional[UploadFile] = File(None), poster: Optional[UploadFile] = File(None), trailer: Optional[UploadFile] = File(None),
 ):
     require_admin(authorization)
     title = (title or "").strip()
@@ -513,13 +526,16 @@ def create_whitepaper(
     try:
         pdf_path = save_upload(whitepaper_pdf, UPLOADS)
         poster_path = save_upload(poster, POSTERS) if poster and poster.filename else ""
+        if trailer and trailer.filename and not is_allowed_trailer(trailer.filename):
+            raise HTTPException(status_code=400, detail="Trailer must be MP4, WebM, MOV or M4V")
+        trailer_path = save_upload(trailer, TRAILERS) if trailer and trailer.filename else ""
         wp_id = str(uuid.uuid4())
         conn=get_conn()
         wp_no = next_whitepaper_no(conn)
         conn.execute("""
-            INSERT INTO whitepapers (id,title,summary,description,category,seo_title,meta_description,status,launch_at,created_at,updated_at,pdf_path,poster_path,linkedin_copy,downloads,whitepaper_no)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)
-        """, (wp_id,title,summary,description,category,seo_title,meta_description,status,launch_at,now_iso(),now_iso(),pdf_path,poster_path,linkedin_copy,wp_no))
+            INSERT INTO whitepapers (id,title,summary,description,category,seo_title,meta_description,status,launch_at,created_at,updated_at,pdf_path,poster_path,trailer_path,linkedin_copy,downloads,whitepaper_no)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)
+        """, (wp_id,title,summary,description,category,seo_title,meta_description,status,launch_at,now_iso(),now_iso(),pdf_path,poster_path,trailer_path,linkedin_copy,wp_no))
         conn.commit(); conn.close()
         return {"id": wp_id, "message":"Whitepaper created", "status": status, "whitepaper_number": f"WP-{wp_no:04d}"}
     except HTTPException:
@@ -531,7 +547,7 @@ def create_whitepaper(
 def update_whitepaper(
     whitepaper_id: str, authorization: Optional[str] = Header(None), title: str = Form(""), summary: str = Form(""), description: str = Form(""),
     category: str = Form("Insights"), seo_title: str = Form(""), meta_description: str = Form(""), status: str = Form("Draft"),
-    launch_at: str = Form(""), linkedin_copy: str = Form(""), whitepaper_pdf: Optional[UploadFile] = File(None), poster: Optional[UploadFile] = File(None),
+    launch_at: str = Form(""), linkedin_copy: str = Form(""), whitepaper_pdf: Optional[UploadFile] = File(None), poster: Optional[UploadFile] = File(None), trailer: Optional[UploadFile] = File(None),
 ):
     require_admin(authorization)
     title = (title or "").strip(); summary = (summary or "").strip()
@@ -543,17 +559,22 @@ def update_whitepaper(
         conn.close(); raise HTTPException(status_code=404, detail="Whitepaper not found")
     pdf_path = existing["pdf_path"]
     poster_path = existing["poster_path"] or ""
+    trailer_path = existing["trailer_path"] or "" if "trailer_path" in existing.keys() else ""
     if whitepaper_pdf and whitepaper_pdf.filename:
         if not whitepaper_pdf.filename.lower().endswith(".pdf"):
             conn.close(); raise HTTPException(status_code=400, detail="Selected whitepaper file must be a PDF")
         pdf_path = save_upload(whitepaper_pdf, UPLOADS)
     if poster and poster.filename:
         poster_path = save_upload(poster, POSTERS)
+    if trailer and trailer.filename:
+        if not is_allowed_trailer(trailer.filename):
+            conn.close(); raise HTTPException(status_code=400, detail="Trailer must be MP4, WebM, MOV or M4V")
+        trailer_path = save_upload(trailer, TRAILERS)
     conn.execute("""
         UPDATE whitepapers
-        SET title=?, summary=?, description=?, category=?, seo_title=?, meta_description=?, status=?, launch_at=?, updated_at=?, pdf_path=?, poster_path=?, linkedin_copy=?
+        SET title=?, summary=?, description=?, category=?, seo_title=?, meta_description=?, status=?, launch_at=?, updated_at=?, pdf_path=?, poster_path=?, trailer_path=?, linkedin_copy=?
         WHERE id=?
-    """, (title,summary,description,category,seo_title,meta_description,status,launch_at,now_iso(),pdf_path,poster_path,linkedin_copy,whitepaper_id))
+    """, (title,summary,description,category,seo_title,meta_description,status,launch_at,now_iso(),pdf_path,poster_path,trailer_path,linkedin_copy,whitepaper_id))
     conn.commit(); conn.close()
     return {"message":"Whitepaper updated", "id": whitepaper_id, "status": status}
 

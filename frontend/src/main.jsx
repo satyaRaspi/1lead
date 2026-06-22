@@ -4,7 +4,7 @@ import { ArrowRight, BarChart3, BrainCircuit, CalendarClock, CheckCircle2, Downl
 import { API_BASE, apiGet, apiPost, apiPut, apiDelete, track } from './api';
 import './styles.css';
 
-const APP_VERSION = 'First Build v1.0.24';
+const APP_VERSION = 'First Build v1.0.25';
 const UPDATED_DATE = '21 June 2026';
 
 const SERVICES = [
@@ -98,6 +98,8 @@ function Home({ whitepapers, setPage, setSelected, openContact }) {
       <div className="services-grid">{SERVICES.map(s=><ServiceCard key={s.title} service={s}/>)}</div>
     </section>
 
+    <FeaturedTrailer whitepapers={whitepapers} setSelected={setSelected} setPage={setPage}/>
+
     <section className="featured-whitepapers" id="whitepapers">
       <div className="section-heading row-heading">
         <div><p className="eyebrow">Gated insights engine</p><h2>Featured whitepapers</h2></div>
@@ -110,6 +112,26 @@ function Home({ whitepapers, setPage, setSelected, openContact }) {
   </main>;
 }
 
+function FeaturedTrailer({ whitepapers, setSelected, setPage }) {
+  const wp = whitepapers.find(w => w.trailer_url) || whitepapers[0];
+  if (!wp) return null;
+  return <section className="featured-trailer-section">
+    <div className="trailer-copy">
+      <p className="eyebrow">Featured insight trailer</p>
+      <h2>{wp.trailer_url ? wp.title : 'Whitepaper trailer ready section'}</h2>
+      <p>{wp.trailer_url ? (wp.summary || 'Watch the trailer and request access to the complete whitepaper.') : 'Upload a trailer video against any whitepaper from Admin. The featured trailer will appear here and stay linked to the whitepaper access flow.'}</p>
+      <div className="trailer-actions">
+        <button className="primary" onClick={()=>{ track('trailer_whitepaper_access_click',{whitepaper_id:wp.id,title:wp.title}); setSelected(wp); }}><LockKeyhole size={16}/> Request Whitepaper Access</button>
+        <button className="secondary" onClick={()=>setPage('whitepapers')}><FileText size={16}/> View all whitepapers</button>
+      </div>
+    </div>
+    <div className="trailer-player-card">
+      {wp.trailer_url ? <video controls playsInline preload="metadata" poster={wp.poster_url || ''} src={`${API_BASE}${wp.trailer_url}`}></video> : <div className="trailer-placeholder"><FileText size={42}/><span>No trailer uploaded yet</span></div>}
+      <div className="trailer-linked-note"><span>{wp.whitepaper_number || 'WP-0000'}</span><strong>Linked to whitepaper</strong></div>
+    </div>
+  </section>;
+}
+
 function Services() {
   return <main className="page-wrap page-top"><div className="section-heading wide"><p className="eyebrow">Services</p><h1>Consulting, data, innovation and AI platforms designed as one execution system.</h1><p>Each service line can stand alone, but the real strength of Truflux is the combination: strategy that becomes insight, insight that becomes design, and design that becomes a working platform.</p></div><div className="service-detail-grid">{SERVICES.map(service=><ServiceDetail key={service.title} service={service}/>)}</div></main>;
 }
@@ -117,7 +139,7 @@ function ServiceCard({ service }) { const Icon=service.icon; return <article cla
 function ServiceDetail({ service }) { const Icon=service.icon; return <article className="service-detail"><div className="card-icon"><Icon size={28}/></div><h2>{service.title}</h2><p>{service.body}</p><div className="pill-list">{service.points.map(p=><span key={p}>{p}</span>)}</div></article>; }
 
 function Whitepapers({ whitepapers, setSelected }) { return <main className="page-wrap page-top"><div className="section-heading wide"><p className="eyebrow">Whitepapers</p><h1>Insight-led content that helps qualify audience interest.</h1><p>Visitors unlock whitepapers by sharing their business profile, area of interest, timeline and consent. Admin can view leads, downloads and campaign source data.</p></div><div className="whitepaper-grid">{whitepapers.map(wp=><WhitepaperCard key={wp.id} wp={wp} onUnlock={()=>setSelected(wp)}/>)}</div></main>; }
-function WhitepaperCard({ wp, onUnlock }) { return <article className="whitepaper-card gradient-tile clean-paper-tile"><div className="tile-glow" aria-hidden="true"></div><div className="whitepaper-topline gradient-topline"><span className="report-tag">Whitepaper</span><span className="category soft">{wp.category}</span></div><div className="tile-content"><div className="tile-mark simple-doc-mark"><FileText size={30}/></div><h3>{wp.title}</h3><p>{wp.summary}</p></div><button className="tile-access clean-access" onClick={()=>{track('whitepaper_download_start',{whitepaper_id:wp.id,title:wp.title}); onUnlock();}}><span><LockKeyhole size={15}/> Request Access</span></button></article>; }
+function WhitepaperCard({ wp, onUnlock }) { return <article className="whitepaper-card gradient-tile clean-paper-tile"><div className="tile-glow" aria-hidden="true"></div><div className="whitepaper-topline gradient-topline"><span className="report-tag">{wp.whitepaper_number || 'Whitepaper'}</span><span className="category soft">{wp.category}</span></div>{wp.trailer_url&&<div className="trailer-chip">Trailer available</div>}<div className="tile-content"><div className="tile-mark simple-doc-mark"><FileText size={30}/></div><h3>{wp.title}</h3><p>{wp.summary}</p></div><button className="tile-access clean-access" onClick={()=>{track('whitepaper_download_start',{whitepaper_id:wp.id,title:wp.title}); onUnlock();}}><span><LockKeyhole size={15}/> Request Access</span></button></article>; }
 
 function LeadModal({ whitepaper, onClose }) {
   const [form,setForm] = useState({name:'',email:'',mobile:'',company:'',designation:'',industry:'',location:'',linkedin_profile:'',interest_area:whitepaper.category||'',business_challenge:'',timeline:'Exploring',consent:false,newsletter:true});
@@ -251,6 +273,8 @@ function AdminUpload({ token }) {
     fd.append('whitepaper_pdf', pdf, pdf.name || 'whitepaper.pdf');
     const poster = form.elements?.poster?.files?.[0];
     if(poster) fd.append('poster', poster, poster.name || 'poster.png');
+    const trailer = form.elements?.trailer?.files?.[0];
+    if(trailer) fd.append('trailer', trailer, trailer.name || 'trailer.mp4');
     ['title','summary','description','category','seo_title','meta_description','status','launch_at','linkedin_copy'].forEach(name=>{
       fd.append(name, form.elements?.[name]?.value || '');
     });
@@ -325,6 +349,7 @@ function AdminUpload({ token }) {
       <div className="section-mini-title"><span className="admin-kicker">Step 3</span><h3>Poster and launch settings</h3></div>
       <div className="form-grid upload-detail-grid">
         <label className="field"><span>Poster / LinkedIn Creative</span><input name="poster" type="file" accept="image/*,.svg"/></label>
+        <label className="field"><span>Trailer Video</span><input name="trailer" type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.m4v"/><small>Featured on the landing page and linked to this whitepaper.</small></label>
         <label className="field"><span>Status</span><select name="status" defaultValue="Draft"><option>Draft</option><option>Scheduled</option><option>Published</option></select></label>
         <label className="field"><span>Launch Date / Time</span><input type="datetime-local" name="launch_at"/></label>
       </div>
@@ -361,6 +386,8 @@ function AdminLibrary({ token }){
     const poster = form.elements?.poster?.files?.[0];
     if(pdf) fd.append('whitepaper_pdf', pdf, pdf.name);
     if(poster) fd.append('poster', poster, poster.name);
+    const trailer = form.elements?.trailer?.files?.[0];
+    if(trailer) fd.append('trailer', trailer, trailer.name);
     const headers = { Authorization: `Bearer ${token}` };
     const res = await fetch(`${API_BASE}/api/admin/whitepapers/${editing.id}`, { method:'PUT', headers, body:fd });
     if(!res.ok){ setMessage(`Update failed: ${await res.text()}`); return; }
@@ -408,6 +435,7 @@ function AdminLibrary({ token }){
       <label className="field"><span>Launch Date / Time</span><input type="datetime-local" name="launch_at" value={(editing.launch_at||'').slice(0,16)} onChange={e=>updateEdit('launch_at',e.target.value)}/></label>
       <label className="field"><span>Replace PDF</span><input name="whitepaper_pdf" type="file" accept="application/pdf,.pdf"/></label>
       <label className="field"><span>Replace Poster</span><input name="poster" type="file" accept="image/*,.svg"/></label>
+      <label className="field"><span>Replace Trailer Video</span><input name="trailer" type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.m4v"/><small>{editing.trailer_url ? 'Current trailer is linked to this whitepaper.' : 'No trailer linked yet.'}</small></label>
       <label className="field wide-field"><span>Short Summary *</span><textarea name="summary" value={editing.summary||''} onChange={e=>updateEdit('summary',e.target.value)} required/></label>
       <label className="field wide-field"><span>Long Description</span><textarea name="description" value={editing.description||''} onChange={e=>updateEdit('description',e.target.value)}/></label>
       <label className="field wide-field"><span>LinkedIn Post Copy</span><textarea name="linkedin_copy" value={editing.linkedin_copy||''} onChange={e=>updateEdit('linkedin_copy',e.target.value)}/></label>
